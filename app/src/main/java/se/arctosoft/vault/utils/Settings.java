@@ -26,17 +26,24 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.google.common.primitives.Bytes;
+
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 
+import se.arctosoft.vault.data.Password;
 import se.arctosoft.vault.data.StoredDirectory;
+import se.arctosoft.vault.encryption.Encryption;
 import se.arctosoft.vault.interfaces.IOnDirectoryAdded;
 
 public class Settings {
     private static final String TAG = "Settings";
     private static final String SHARED_PREFERENCES_NAME = "prefs";
-    private static final String PREF_DIRECTORIES = "p.gallery.dirs";
+    private static final String PREF_VAULT_PREFIX = "dirs_";
+    private static final String PREF_VAULT_KEYS = "keys";
     private static final String PREF_SHOW_FILENAMES_IN_GRID = "p.gallery.fn";
     public static final String PREF_ENCRYPTION_ITERATION_COUNT = "encryption_iteration_count";
     public static final String PREF_ENCRYPTION_USE_DISK_CACHE = "encryption_use_disk_cache";
@@ -129,7 +136,7 @@ public class Settings {
         } else {
             directories.add(0, newDir);
         }
-        getSharedPrefsEditor().putString(PREF_DIRECTORIES, stringListAsString(directories)).apply();
+        getSharedPrefsEditor().putString(getDirsKey(), stringListAsString(directories)).apply();
         if (onDirectoryAdded != null) {
             if (reordered) {
                 onDirectoryAdded.onAlreadyExists();
@@ -146,7 +153,7 @@ public class Settings {
         String[] split = uri.toString().split("/document/");
         directories.remove(new StoredDirectory(split[0], false));
         directories.remove(new StoredDirectory(uri, false));
-        getSharedPrefsEditor().putString(PREF_DIRECTORIES, stringListAsString(directories)).apply();
+        getSharedPrefsEditor().putString(getDirsKey(), stringListAsString(directories)).apply();
     }
 
     public void removeGalleryDirectories(@NonNull List<Uri> uris) {
@@ -154,7 +161,7 @@ public class Settings {
         for (Uri u : uris) {
             directories.remove(new StoredDirectory(u, false));
         }
-        getSharedPrefsEditor().putString(PREF_DIRECTORIES, stringListAsString(directories)).apply();
+        getSharedPrefsEditor().putString(getDirsKey(), stringListAsString(directories)).apply();
     }
 
     @NonNull
@@ -187,7 +194,7 @@ public class Settings {
 
     @NonNull
     private List<StoredDirectory> getGalleryDirectories(boolean rootDirsOnly) {
-        String s = getSharedPrefs().getString(PREF_DIRECTORIES, null);
+        String s = getSharedPrefs().getString(getDirsKey(), null);
         List<StoredDirectory> storedDirectories = new ArrayList<>();
         if (s != null && !s.isEmpty()) {
             String[] split = s.split("\n");
@@ -201,6 +208,39 @@ public class Settings {
             }
         }
         return storedDirectories;
+    }
+
+    private String getDirsKey() {
+        return PREF_VAULT_PREFIX + new String(Password.getInstance().getDirHash(), StandardCharsets.UTF_8);
+    }
+
+    public byte[] getDirHashForKey(char[] password) {
+        String keys = getSharedPrefs().getString(PREF_VAULT_KEYS, "");
+        byte[] bytes = keys.getBytes(StandardCharsets.ISO_8859_1);
+
+        final int entryLength = Encryption.SALT_LENGTH + Encryption.DIR_HASH_LENGTH; // 16 + 8
+
+        int startPos = 0;
+        while (startPos + entryLength <= bytes.length) { // for each entry, check if the current password can produce the same hash
+            byte[] salt = Arrays.copyOfRange(bytes, startPos, startPos + Encryption.SALT_LENGTH); // 16 bytes
+            byte[] hash = Arrays.copyOfRange(bytes, startPos + Encryption.SALT_LENGTH, startPos + Encryption.SALT_LENGTH + Encryption.DIR_HASH_LENGTH); // following 8 bytes
+            byte[] dirHash = Encryption.getDirHash(salt, password);
+
+            if (Arrays.equals(dirHash, hash)) {
+                return dirHash;
+            }
+            startPos += entryLength;
+        }
+        return null;
+    }
+
+    public void saveKeyEntry(byte[] salt, byte[] hash) {
+        String keys = getSharedPrefs().getString(PREF_VAULT_KEYS, "");
+        String newKeys = new String(Bytes.concat(keys.getBytes(StandardCharsets.ISO_8859_1), salt, hash), StandardCharsets.ISO_8859_1);
+        //Log.e(TAG, "saveKeyEntry:\n" + Arrays.toString(keys.getBytes(StandardCharsets.ISO_8859_1)) + "\n" + Arrays.toString(Bytes.concat(salt, hash)) + "\n");
+        getSharedPrefsEditor()
+                .putString(PREF_VAULT_KEYS, newKeys)
+                .apply();
     }
 
     public void setShowFilenames(boolean show) {

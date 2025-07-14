@@ -48,6 +48,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.spec.KeySpec;
 import java.util.ArrayList;
@@ -78,10 +79,11 @@ public class Encryption {
     private static final String KEY_ALGORITHM = "PBKDF2withHmacSHA512";
     private static final int ITERATION_COUNT_V1 = 20000;
     private static final int KEY_LENGTH = 256;
-    private static final int SALT_LENGTH = 16;
+    public static final int SALT_LENGTH = 16;
     private static final int IV_LENGTH = 12;
     private static final int CHECK_LENGTH = 12;
     private static final int INTEGER_LENGTH = 4;
+    public static final int DIR_HASH_LENGTH = 8;
     private static final String JSON_ORIGINAL_NAME = "originalName";
 
     public static final String ENCRYPTED_PREFIX = ".valv.";
@@ -548,6 +550,18 @@ public class Encryption {
         }
     }
 
+    public static byte[] generateSecureSalt(int length) {
+        byte[] salt = new byte[length];
+        SecureRandom sr;
+        try {
+            sr = SecureRandom.getInstanceStrong();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+        sr.nextBytes(salt);
+        return salt;
+    }
+
     private static void writeSaltAndIV(@Nullable byte[] version, byte[] salt, byte[] ivBytes, @Nullable byte[] iterationCount, @Nullable byte[] checkBytes, OutputStream fos) throws IOException {
         if (version != null) {
             fos.write(version);
@@ -655,36 +669,28 @@ public class Encryption {
         }
     }
 
-    /*public static void decryptToByteArray(FragmentActivity context, Uri encryptedInput, char[] password, IOnByteArrayResult onByteArrayResult) {
+    public static byte[] getDirHash(byte[] salt, char[] password) {
         try {
-            InputStream inputStream = new BufferedInputStream(context.getContentResolver().openInputStream(encryptedInput), 1024 * 32);
-            Streams cis = getCipherInputStream(inputStream, password, false);
+            SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance(KEY_ALGORITHM);
+            KeySpec keySpec = new PBEKeySpec(password, salt, 120_000, KEY_LENGTH + 8);
+            SecretKey secretKey = secretKeyFactory.generateSecret(keySpec);
 
-            byte[] data = inputStreamToBytes(cis.inputStream);
-            cis.close();
-            inputStream.close();
+            byte[] encoded = secretKey.getEncoded();
+            byte[] bytes = Arrays.copyOfRange(encoded, encoded.length - 8, encoded.length); // get last 8 bytes
 
-            onByteArrayResult.onBytesResult(data);
-        } catch (GeneralSecurityException | IOException e) {
+            try {
+                secretKey.destroy();
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+            Arrays.fill(encoded, (byte) 0);
+
+            return bytes;
+        } catch (Exception e) {
             e.printStackTrace();
-            onByteArrayResult.onError(e);
-        } catch (InvalidPasswordException e) {
-            e.printStackTrace();
-            onByteArrayResult.onInvalidPassword(e);
+            return null;
         }
     }
-
-    public static byte[] inputStreamToBytes(InputStream is) throws IOException {
-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-
-        int nRead;
-        byte[] data = new byte[16384];
-        while ((nRead = is.read(data, 0, data.length)) != -1) {
-            buffer.write(data, 0, nRead);
-        }
-
-        return buffer.toByteArray();
-    }*/
 
     public interface IOnUriResult {
         void onUriResult(Uri outputUri);
@@ -693,13 +699,5 @@ public class Encryption {
 
         void onInvalidPassword(InvalidPasswordException e);
     }
-
-    /*public interface IOnByteArrayResult {
-        void onBytesResult(byte[] bytes);
-
-        void onError(Exception e);
-
-        void onInvalidPassword(InvalidPasswordException e);
-    }*/
 
 }

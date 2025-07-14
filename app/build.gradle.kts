@@ -1,18 +1,19 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.about.libraries)
+    alias(libs.plugins.kotlin.android)
 }
 
 android {
     namespace = "se.arctosoft.vault"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "se.arctosoft.vault"
         minSdk = 28
-        targetSdk = 35
-        versionCode = 37
-        versionName = "2.2.2"
+        targetSdk = 36
+        versionCode = 38
+        versionName = "2.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -57,9 +58,13 @@ android {
         // Disables dependency metadata when building Android App Bundles.
         includeInBundle = false
     }
+    kotlinOptions {
+        jvmTarget = "21"
+    }
 }
 
 dependencies {
+    implementation(libs.core.ktx)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
     testImplementation(libs.junit)

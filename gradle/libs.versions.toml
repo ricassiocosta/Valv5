@@ -1,21 +1,23 @@
 [versions]
-agp = "8.8.0"
+agp = "8.11.1"
 junit = "4.13.2"
 junitVersion = "1.2.1"
 espressoCore = "3.6.1"
-appcompat = "1.7.0"
+appcompat = "1.7.1"
 material = "1.12.0"
-constraintlayout = "2.2.0"
-navigationFragment = "2.8.5"
-navigationUi = "2.8.5"
+constraintlayout = "2.2.1"
+navigationFragment = "2.9.1"
+navigationUi = "2.9.1"
 preferences = "1.2.1"
-activity = "1.10.0"
+activity = "1.10.1"
 crypto = "1.0.0"
-aboutLibraries = "11.2.3"
-exoplayer = "1.5.1"
-ui = "1.5.1"
+aboutLibraries = "12.2.4"
+exoplayer = "1.7.1"
+ui = "1.7.1"
 glide = "4.16.0"
 preference = "1.2.1"
+kotlin = "2.2.0"
+coreKtx = "1.16.0"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -38,7 +40,9 @@ glide-annotation = { group = "com.github.bumptech.glide", name = "compiler", ver
 about-libraries = { group = "com.mikepenz", name = "aboutlibraries", version.ref = "aboutLibraries" }
 about-libraries-compose = { group = "com.mikepenz", name = "aboutlibraries-compose-m3", version.ref = "aboutLibraries" }
 preference = { group = "androidx.preference", name = "preference", version.ref = "preference" }
+core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 about-libraries = { id = "com.mikepenz.aboutlibraries.plugin", version.ref = "aboutLibraries" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

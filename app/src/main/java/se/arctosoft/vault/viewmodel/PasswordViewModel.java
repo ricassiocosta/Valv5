@@ -30,6 +30,16 @@ public class PasswordViewModel extends ViewModel {
         return password.getPassword();
     }
 
+    public void setDirHash(byte[] dirHash) {
+        initPassword();
+        this.password.setDirHash(dirHash);
+    }
+
+    public byte[] getDirHash() {
+        initPassword();
+        return password.getDirHash();
+    }
+
     public void clearPassword() {
         if (password != null) {
             password.clearPassword();

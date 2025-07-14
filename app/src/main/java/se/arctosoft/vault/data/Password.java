@@ -33,12 +33,21 @@ public class Password {
 
     private static Password instance;
     private char[] password;
+    private byte[] dirHash;
 
     private Password() {
     }
 
     public void setPassword(char[] password) {
         this.password = password;
+    }
+
+    public void setDirHash(byte[] dirHash) {
+        this.dirHash = dirHash;
+    }
+
+    public byte[] getDirHash() {
+        return dirHash;
     }
 
     public char[] getPassword() {

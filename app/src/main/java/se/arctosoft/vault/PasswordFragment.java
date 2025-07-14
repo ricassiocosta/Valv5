@@ -3,6 +3,7 @@ package se.arctosoft.vault;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -17,10 +18,13 @@ import androidx.navigation.Navigation;
 import androidx.navigation.fragment.NavHostFragment;
 
 import se.arctosoft.vault.databinding.FragmentPasswordBinding;
+import se.arctosoft.vault.encryption.Encryption;
 import se.arctosoft.vault.utils.Dialogs;
+import se.arctosoft.vault.utils.Settings;
 import se.arctosoft.vault.viewmodel.PasswordViewModel;
 
 public class PasswordFragment extends Fragment {
+    private static final String TAG = "PasswordFragment";
     public static String LOGIN_SUCCESSFUL = "LOGIN_SUCCESSFUL";
 
     private PasswordViewModel passwordViewModel;
@@ -66,14 +70,31 @@ public class PasswordFragment extends Fragment {
         });
         binding.btnUnlock.setOnClickListener(v -> {
             binding.btnUnlock.setEnabled(false);
+            binding.eTPassword.setEnabled(false);
             char[] temp = new char[binding.eTPassword.length()];
             binding.eTPassword.getText().getChars(0, binding.eTPassword.length(), temp, 0);
             passwordViewModel.setPassword(temp);
-            binding.eTPassword.setText(null);
 
-            MainActivity.GLIDE_KEY = System.currentTimeMillis();
-            savedStateHandle.set(LOGIN_SUCCESSFUL, true);
-            NavHostFragment.findNavController(this).popBackStack();
+            new Thread(() -> {
+                Settings settings = Settings.getInstance(requireContext());
+                byte[] dirHash = settings.getDirHashForKey(temp);
+                if (dirHash == null) {
+                    Log.e(TAG, "init: dirHash null, save new");
+                    byte[] salt = Encryption.generateSecureSalt(Encryption.SALT_LENGTH);
+                    dirHash = Encryption.getDirHash(salt, temp);
+                    settings.saveKeyEntry(salt, dirHash);
+                }
+
+                byte[] finalDirHash = dirHash;
+                requireActivity().runOnUiThread(() -> {
+                    passwordViewModel.setDirHash(finalDirHash);
+                    binding.eTPassword.setText(null);
+                    MainActivity.GLIDE_KEY = System.currentTimeMillis();
+                    savedStateHandle.set(LOGIN_SUCCESSFUL, true);
+                    NavHostFragment.findNavController(this).popBackStack();
+                });
+            }).start();
+
         });
         binding.btnHelp.setOnClickListener(v -> Dialogs.showTextDialog(requireContext(), null, getString(R.string.launcher_help_message)));
     }

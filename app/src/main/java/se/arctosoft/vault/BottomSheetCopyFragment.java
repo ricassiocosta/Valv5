@@ -44,6 +44,7 @@ import java.util.List;
 
 import se.arctosoft.vault.adapters.ImportListAdapter;
 import se.arctosoft.vault.data.GalleryFile;
+import se.arctosoft.vault.data.Password;
 import se.arctosoft.vault.databinding.BottomSheetCopyBinding;
 import se.arctosoft.vault.utils.FileStuff;
 import se.arctosoft.vault.utils.Settings;
