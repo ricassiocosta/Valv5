@@ -25,7 +25,6 @@ import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.SwitchPreferenceCompat;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.KeyStoreException;
@@ -33,7 +32,6 @@ import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
-import java.util.Arrays;
 import java.util.concurrent.Executor;
 
 import javax.crypto.BadPaddingException;
@@ -89,8 +87,9 @@ public class SettingsFragment extends PreferenceFragmentCompat implements MenuPr
                         Cipher cipher = cryptoObject.getCipher();
                         byte[] iv = cipher.getIV();
                         byte[] encryptedInfo = cipher.doFinal(Encryption.toBytes(Password.getInstance().getPassword()));
-                        Log.e(TAG, "Encrypted information: " + Arrays.toString(encryptedInfo));
+
                         settings.setBiometricsEnabled(iv, encryptedInfo);
+                        Toaster.getInstance(activity).showLong(getString(R.string.settings_biometrics_enabled));
                     } catch (BadPaddingException | IllegalBlockSizeException e) {
                         e.printStackTrace();
                         Toaster.getInstance(activity).showShort(e.toString());

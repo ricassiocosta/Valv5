@@ -30,7 +30,6 @@ import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
-import java.util.Arrays;
 import java.util.concurrent.Executor;
 
 import javax.crypto.BadPaddingException;
@@ -101,6 +100,7 @@ public class PasswordFragment extends Fragment {
         binding.btnUnlock.setOnClickListener(v -> {
             binding.btnUnlock.setEnabled(false);
             binding.eTPassword.setEnabled(false);
+            binding.biometrics.setEnabled(false);
             binding.loading.setVisibility(View.VISIBLE);
             char[] temp = new char[binding.eTPassword.length()];
             binding.eTPassword.getText().getChars(0, binding.eTPassword.length(), temp, 0);
@@ -149,7 +149,6 @@ public class PasswordFragment extends Fragment {
                             char[] chars = Encryption.toChars(decrypted);
                             binding.eTPassword.setText(chars, 0, chars.length);
                             binding.btnUnlock.performClick();
-                            Log.e(TAG, "Decrypted information: " + Arrays.toString(decrypted));
                         } catch (BadPaddingException | IllegalBlockSizeException e) {
                             e.printStackTrace();
                             Toaster.getInstance(requireActivity()).showShort(e.toString());

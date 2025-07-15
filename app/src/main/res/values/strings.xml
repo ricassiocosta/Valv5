@@ -48,7 +48,8 @@
     <string name="settings_secure_title">Use FLAG_SECURE</string>
     <string name="settings_secure_summary">Tells Android to not allow screenshots or display the window view on a non-secure display.</string>
     <string name="settings_biometrics_title">Unlock with biometrics</string>
-    <string name="settings_biometrics_summary">Unlock your vault with your biometric credentials. Your password will be stored encrypted in Android\'s KeyStore system. Disable to clear the stored key. Only one vault can be unlocked with biometrics.</string>
+    <string name="settings_biometrics_summary">Unlock your vault with your biometric credentials. Only one vault can be unlocked with biometrics.</string>
+    <string name="settings_biometrics_enabled">Biometrics enabled</string>
 
     <string name="menu_gallery_edit_included_folders">Edit included folders</string>
     <string name="menu_gallery_import">Import files</string>
