@@ -1,6 +1,7 @@
-An encrypted gallery vault for Android devices.
+<i>Valv</i> is an encrypted gallery, storing your sensitive photos, GIFs and videos securely on your device. Choose a password or PIN-code and protect your gallery. <i>Valv</i> encrypts your files using the fast ChaCha20 stream cipher.
 
 <b>Features</b>
+
 * Supports images, GIFs, videos and text files
 * Organise using folders
 * The app requires no permissions
@@ -10,4 +11,5 @@ An encrypted gallery vault for Android devices.
 * Add notes/text to files
 
 <b>Encryption</b>
+
 Files are encrypted using ChaCha20 and keys are derived using PBKDF2 with HMAC-SHA512.

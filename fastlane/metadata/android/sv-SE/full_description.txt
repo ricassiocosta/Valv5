@@ -1,6 +1,7 @@
-En krypterad galleriapp för Android-enheter.
+<i>Valv</i> är ett krypterat galleri som lagrar dina känsliga foton, GIF-filer och videor säkert på din enhet. Välj ett lösenord eller en PIN-kod och skydda ditt galleri. <i>Valv</i> krypterar dina filer med hjälp av den snabba ChaCha20-krypteringen.
 
 <b>Funktioner</b>
+
 * Stödjer bilder, GIF, videor och textfiler
 * Organisera med hjälp av mappar
 * Appen kräver inga behörigheter
@@ -10,4 +11,5 @@ En krypterad galleriapp för Android-enheter.
 * Lägg till anteckningar/text till filer
 
 <b>Kryptering</b>
+
 Filer krypteras med ChaCha20 och nycklar härleds med PBKDF2 med HMAC-SHA512.
