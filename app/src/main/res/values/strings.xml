@@ -47,6 +47,8 @@
     <string name="settings_app">App behaviour</string>
     <string name="settings_secure_title">Use FLAG_SECURE</string>
     <string name="settings_secure_summary">Tells Android to not allow screenshots or display the window view on a non-secure display.</string>
+    <string name="settings_biometrics_title">Unlock with biometrics</string>
+    <string name="settings_biometrics_summary">Unlock your vault with your biometric credentials. Your password will be stored encrypted in Android\'s KeyStore system. Disable to clear the stored key. Only one vault can be unlocked with biometrics.</string>
 
     <string name="menu_gallery_edit_included_folders">Edit included folders</string>
     <string name="menu_gallery_import">Import files</string>
@@ -228,5 +230,10 @@
     <string name="dialog_delete_file_message">Delete this file permanently?</string>
     <string name="dialog_about_title">About</string>
     <string name="dialog_about_message">Valv gallery vault\n\nVersion %1$s-%2$s (%3$d)\n\nFiles are encrypted using ChaCha20 and keys are derived using PBKDF2 with HMAC-SHA512.\n\n\u00A9 2024 Arctosoft AB</string>
+
+    <string name="biometrics_not_enabled">You need to enable biometrics on your device before using this feature!</string>
+    <string name="biometrics_prompt_title">Enable biometrics</string>
+    <string name="biometrics_prompt_subtitle">Allow logging in to this vault using your biometric credential.</string>
+    <string name="biometrics_unlock_title">Unlock your vault</string>
 
 </resources>

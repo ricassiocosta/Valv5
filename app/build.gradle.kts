@@ -76,6 +76,7 @@ dependencies {
     implementation(libs.navigation.ui)
     implementation(libs.preference)
     implementation(libs.activity)
+    implementation(libs.biometrics)
 
     implementation(libs.security.crypto)
     implementation(libs.media3.exoplayer)

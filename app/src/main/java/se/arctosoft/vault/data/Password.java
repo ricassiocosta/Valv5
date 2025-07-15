@@ -74,7 +74,7 @@ public class Password {
     }
 
     public static void lock(Context context, boolean deleteDirHash) {
-        Log.d(TAG, "lock" + ", " + context + ", " + deleteDirHash);
+        Log.e(TAG, "lock" + ", " + context + ", " + deleteDirHash);
         Password p = Password.getInstance();
         if (deleteDirHash && context != null && p.dirHash != null) {
             Settings settings = Settings.getInstance(context);

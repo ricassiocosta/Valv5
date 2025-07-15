@@ -53,6 +53,8 @@ public class Settings {
     public static final String PREF_APP_SECURE = "app_secure";
     public static final String PREF_APP_EDIT_FOLDERS = "app_edit_folders";
     public static final String PREF_APP_EXIT_ON_LOCK = "app_exit_on_lock";
+    public static final String PREF_APP_BIOMETRICS = "app_biometrics";
+    public static final String PREF_APP_BIOMETRICS_DATA = "app_biometrics_data";
 
     private final Context context;
     private static Settings settings;
@@ -94,6 +96,33 @@ public class Settings {
 
     public boolean isDeleteByDefault() {
         return getSharedPrefs().getBoolean(PREF_ENCRYPTION_DELETE_BY_DEFAULT, false);
+    }
+
+    public boolean isBiometricsEnabled() {
+        return getSharedPrefs().getString(PREF_APP_BIOMETRICS, null) != null;
+    }
+
+    public void setBiometricsEnabled(byte[] iv, byte[] data) {
+        getSharedPrefsEditor()
+                .putString(PREF_APP_BIOMETRICS, iv == null ? null : new String(iv, StandardCharsets.ISO_8859_1))
+                .putString(PREF_APP_BIOMETRICS_DATA, data == null ? null : new String(data, StandardCharsets.ISO_8859_1))
+                .apply();
+    }
+
+    public byte[] getBiometricsIv() {
+        String s = getSharedPrefs().getString(PREF_APP_BIOMETRICS, null);
+        if (s == null) {
+            return null;
+        }
+        return s.getBytes(StandardCharsets.ISO_8859_1);
+    }
+
+    public byte[] getBiometricsData() {
+        String s = getSharedPrefs().getString(PREF_APP_BIOMETRICS_DATA, null);
+        if (s == null) {
+            return null;
+        }
+        return s.getBytes(StandardCharsets.ISO_8859_1);
     }
 
     public void setDeleteByDefault(boolean deleteByDefault) {

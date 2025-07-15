@@ -10,6 +10,13 @@
             android:title="@string/menu_gallery_edit_included_folders" />
 
         <SwitchPreferenceCompat
+            android:key="app_biometrics"
+            android:summary="@string/settings_biometrics_summary"
+            app:defaultValue="false"
+            app:icon="@drawable/rounded_fingerprint_24"
+            app:title="@string/settings_biometrics_title" />
+
+        <SwitchPreferenceCompat
             android:key="app_secure"
             android:summary="@string/settings_secure_summary"
             app:defaultValue="true"

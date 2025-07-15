@@ -1,5 +1,7 @@
 package se.arctosoft.vault;
 
+import static androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG;
+
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -11,17 +13,39 @@ import android.view.inputmethod.EditorInfo;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.biometric.BiometricManager;
+import androidx.biometric.BiometricPrompt;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.SavedStateHandle;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.navigation.Navigation;
 import androidx.navigation.fragment.NavHostFragment;
 
+import java.io.IOException;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.security.UnrecoverableKeyException;
+import java.security.cert.CertificateException;
+import java.util.Arrays;
+import java.util.concurrent.Executor;
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.IvParameterSpec;
+
 import se.arctosoft.vault.data.DirHash;
 import se.arctosoft.vault.databinding.FragmentPasswordBinding;
 import se.arctosoft.vault.encryption.Encryption;
 import se.arctosoft.vault.utils.Dialogs;
 import se.arctosoft.vault.utils.Settings;
+import se.arctosoft.vault.utils.Toaster;
 import se.arctosoft.vault.viewmodel.PasswordViewModel;
 
 public class PasswordFragment extends Fragment {
@@ -31,6 +55,9 @@ public class PasswordFragment extends Fragment {
     private PasswordViewModel passwordViewModel;
     private SavedStateHandle savedStateHandle;
     private FragmentPasswordBinding binding;
+
+    private BiometricPrompt biometricPrompt;
+    private BiometricPrompt.PromptInfo promptInfo;
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -46,6 +73,8 @@ public class PasswordFragment extends Fragment {
                 .getPreviousBackStackEntry()
                 .getSavedStateHandle();
         savedStateHandle.set(LOGIN_SUCCESSFUL, false);
+
+        Settings settings = Settings.getInstance(requireContext());
 
         binding.eTPassword.addTextChangedListener(new TextWatcher() {
             @Override
@@ -78,7 +107,6 @@ public class PasswordFragment extends Fragment {
             passwordViewModel.setPassword(temp);
 
             new Thread(() -> {
-                Settings settings = Settings.getInstance(requireContext());
                 DirHash dirHash = settings.getDirHashForKey(temp);
                 if (dirHash == null) {
                     Log.e(TAG, "init: dirHash null, save new");
@@ -99,6 +127,67 @@ public class PasswordFragment extends Fragment {
 
         });
         binding.btnHelp.setOnClickListener(v -> Dialogs.showTextDialog(requireContext(), null, getString(R.string.launcher_help_message)));
+
+        BiometricManager biometricManager = BiometricManager.from(requireContext());
+        if (settings.isBiometricsEnabled() && biometricManager.canAuthenticate(BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS) {
+            Executor executor = ContextCompat.getMainExecutor(requireContext());
+            biometricPrompt = new BiometricPrompt(requireActivity(), executor, new BiometricPrompt.AuthenticationCallback() {
+                @Override
+                public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
+                    super.onAuthenticationError(errorCode, errString);
+                    Log.e(TAG, "onAuthenticationError: " + errorCode + ", " + errString);
+                }
+
+                @Override
+                public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
+                    super.onAuthenticationSucceeded(result);
+                    Log.e(TAG, "onAuthenticationSucceeded: " + result);
+                    BiometricPrompt.CryptoObject cryptoObject = result.getCryptoObject();
+                    if (cryptoObject != null) {
+                        try {
+                            byte[] decrypted = cryptoObject.getCipher().doFinal(settings.getBiometricsData());
+                            char[] chars = Encryption.toChars(decrypted);
+                            binding.eTPassword.setText(chars, 0, chars.length);
+                            binding.btnUnlock.performClick();
+                            Log.e(TAG, "Decrypted information: " + Arrays.toString(decrypted));
+                        } catch (BadPaddingException | IllegalBlockSizeException e) {
+                            e.printStackTrace();
+                            Toaster.getInstance(requireActivity()).showShort(e.toString());
+                        }
+                    }
+                }
+
+                @Override
+                public void onAuthenticationFailed() {
+                    super.onAuthenticationFailed();
+                    Log.e(TAG, "onAuthenticationFailed: ");
+                }
+            });
+
+            promptInfo = new BiometricPrompt.PromptInfo.Builder()
+                    .setTitle(getString(R.string.biometrics_unlock_title))
+                    .setNegativeButtonText(getString(R.string.cancel))
+                    .setAllowedAuthenticators(BIOMETRIC_STRONG)
+                    .build();
+
+            binding.biometrics.setOnClickListener(v -> {
+                try {
+                    Cipher cipher = Encryption.getBiometricCipher();
+                    SecretKey secretKey = Encryption.getOrGenerateBiometricSecretKey();
+                    cipher.init(Cipher.DECRYPT_MODE, secretKey, new IvParameterSpec(settings.getBiometricsIv()));
+                    biometricPrompt.authenticate(promptInfo, new BiometricPrompt.CryptoObject(cipher));
+                } catch (KeyStoreException | CertificateException | IOException |
+                         NoSuchAlgorithmException | NoSuchProviderException |
+                         InvalidAlgorithmParameterException | UnrecoverableKeyException |
+                         InvalidKeyException | NoSuchPaddingException e) {
+                    e.printStackTrace();
+                    Toaster.getInstance(requireContext()).showShort(e.toString());
+                }
+            });
+            binding.biometrics.performClick();
+        } else {
+            binding.biometrics.setVisibility(View.GONE);
+        }
     }
 
 }

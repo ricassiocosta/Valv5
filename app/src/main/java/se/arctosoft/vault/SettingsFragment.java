@@ -1,6 +1,9 @@
 package se.arctosoft.vault;
 
+import static androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG;
+
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
@@ -10,6 +13,9 @@ import android.view.WindowManager;
 import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.biometric.BiometricManager;
+import androidx.biometric.BiometricPrompt;
+import androidx.core.content.ContextCompat;
 import androidx.core.view.MenuProvider;
 import androidx.fragment.app.FragmentActivity;
 import androidx.navigation.NavController;
@@ -18,7 +24,26 @@ import androidx.preference.Preference;
 import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.SwitchPreferenceCompat;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.security.UnrecoverableKeyException;
+import java.security.cert.CertificateException;
+import java.util.Arrays;
+import java.util.concurrent.Executor;
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.SecretKey;
+
 import se.arctosoft.vault.data.Password;
+import se.arctosoft.vault.encryption.Encryption;
 import se.arctosoft.vault.utils.Dialogs;
 import se.arctosoft.vault.utils.Settings;
 import se.arctosoft.vault.utils.Toaster;
@@ -26,12 +51,16 @@ import se.arctosoft.vault.utils.Toaster;
 public class SettingsFragment extends PreferenceFragmentCompat implements MenuProvider {
     private static final String TAG = "SettingsFragment";
 
+    private BiometricPrompt biometricPrompt;
+    private BiometricPrompt.PromptInfo promptInfo;
+
     @Override
     public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
         setPreferencesFromResource(R.xml.root_preferences, rootKey);
 
         Preference iterationCount = findPreference(Settings.PREF_ENCRYPTION_ITERATION_COUNT);
         Preference editFolders = findPreference(Settings.PREF_APP_EDIT_FOLDERS);
+        SwitchPreferenceCompat biometrics = findPreference(Settings.PREF_APP_BIOMETRICS);
         SwitchPreferenceCompat useDiskCache = findPreference(Settings.PREF_ENCRYPTION_USE_DISK_CACHE);
         SwitchPreferenceCompat secure = findPreference(Settings.PREF_APP_SECURE);
         SwitchPreferenceCompat deleteByDefault = findPreference(Settings.PREF_ENCRYPTION_DELETE_BY_DEFAULT);
@@ -40,6 +69,49 @@ public class SettingsFragment extends PreferenceFragmentCompat implements MenuPr
 
         FragmentActivity activity = requireActivity();
         Settings settings = Settings.getInstance(activity);
+
+        Executor executor = ContextCompat.getMainExecutor(activity);
+        biometricPrompt = new BiometricPrompt(activity, executor, new BiometricPrompt.AuthenticationCallback() {
+            @Override
+            public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
+                super.onAuthenticationError(errorCode, errString);
+                Log.e(TAG, "onAuthenticationError: " + errorCode + ", " + errString);
+                biometrics.setChecked(false);
+            }
+
+            @Override
+            public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
+                super.onAuthenticationSucceeded(result);
+                Log.e(TAG, "onAuthenticationSucceeded: " + result);
+                BiometricPrompt.CryptoObject cryptoObject = result.getCryptoObject();
+                if (cryptoObject != null) {
+                    try {
+                        Cipher cipher = cryptoObject.getCipher();
+                        byte[] iv = cipher.getIV();
+                        byte[] encryptedInfo = cipher.doFinal(Encryption.toBytes(Password.getInstance().getPassword()));
+                        Log.e(TAG, "Encrypted information: " + Arrays.toString(encryptedInfo));
+                        settings.setBiometricsEnabled(iv, encryptedInfo);
+                    } catch (BadPaddingException | IllegalBlockSizeException e) {
+                        e.printStackTrace();
+                        Toaster.getInstance(activity).showShort(e.toString());
+                        biometrics.setChecked(false);
+                    }
+                }
+            }
+
+            @Override
+            public void onAuthenticationFailed() {
+                super.onAuthenticationFailed();
+                Log.e(TAG, "onAuthenticationFailed: ");
+            }
+        });
+
+        promptInfo = new BiometricPrompt.PromptInfo.Builder()
+                .setTitle(getString(R.string.biometrics_prompt_title))
+                .setSubtitle(getString(R.string.biometrics_prompt_subtitle))
+                .setNegativeButtonText(getString(R.string.cancel))
+                .setAllowedAuthenticators(BIOMETRIC_STRONG)
+                .build();
 
         iterationCount.setSummary(getString(R.string.settings_iteration_count_summary, settings.getIterationCount()));
         iterationCount.setOnPreferenceClickListener(preference -> {
@@ -96,6 +168,45 @@ public class SettingsFragment extends PreferenceFragmentCompat implements MenuPr
             });
             return true;
         });
+
+        biometrics.setOnPreferenceChangeListener((preference, newValue) -> {
+            if ((boolean) newValue) {
+                return enableBiometrics();
+            } else {
+                try {
+                    Encryption.deleteBiometricSecretKey();
+                } catch (NoSuchAlgorithmException | KeyStoreException | CertificateException |
+                         IOException e) {
+                    e.printStackTrace();
+                    Toaster.getInstance(activity).showLong(e.toString());
+                }
+                settings.setBiometricsEnabled(null, null);
+            }
+            return true;
+        });
+    }
+
+    private boolean enableBiometrics() {
+        BiometricManager biometricManager = BiometricManager.from(requireContext());
+        if (biometricManager.canAuthenticate(BIOMETRIC_STRONG) != BiometricManager.BIOMETRIC_SUCCESS) {
+            Toaster.getInstance(requireContext()).showLong(getString(R.string.biometrics_not_enabled));
+            return false;
+        }
+        try {
+            Cipher cipher = Encryption.getBiometricCipher();
+            SecretKey secretKey = Encryption.getOrGenerateBiometricSecretKey();
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+            biometricPrompt.authenticate(promptInfo, new BiometricPrompt.CryptoObject(cipher));
+
+            return true;
+        } catch (KeyStoreException | CertificateException | IOException |
+                 NoSuchAlgorithmException | NoSuchProviderException |
+                 InvalidAlgorithmParameterException | UnrecoverableKeyException |
+                 InvalidKeyException | NoSuchPaddingException e) {
+            e.printStackTrace();
+            Toaster.getInstance(requireContext()).showShort(e.toString());
+            return false;
+        }
     }
 
     @Override
