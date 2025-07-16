@@ -12,7 +12,7 @@ android {
         applicationId = "se.arctosoft.vault"
         minSdk = 28
         targetSdk = 36
-        versionCode = 38
+        versionCode = 39
         versionName = "2.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -93,4 +93,10 @@ aboutLibraries {
     configPath = "config"
     // Remove the "generated" timestamp to allow for reproducible builds
     excludeFields = arrayOf("generated")
+}
+
+tasks.whenTaskAdded { // https://gist.github.com/obfusk/61046e09cee352ae6dd109911534b12e#fix-proposed-by-linsui-disable-baseline-profiles
+    if (name.contains("ArtProfile")) {
+        enabled = false
+    }
 }
