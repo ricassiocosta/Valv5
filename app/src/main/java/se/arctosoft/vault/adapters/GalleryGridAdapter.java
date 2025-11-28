@@ -143,12 +143,22 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
         updateSelectedView(holder, galleryFile);
         holder.binding.txtName.setVisibility(showFileNames || galleryFile.isDirectory() ? View.VISIBLE : View.GONE);
         holder.binding.imageView.setImageDrawable(null);
-        if (!isRootDir && (galleryFile.isGif() || galleryFile.isVideo() || galleryFile.isDirectory())) {
+        if (!isRootDir && (galleryFile.isGif() || galleryFile.isVideo() || galleryFile.isDirectory() || galleryFile.isText())) {
             holder.binding.imgType.setVisibility(View.VISIBLE);
-            holder.binding.imgType.setImageDrawable(ResourcesCompat.getDrawable(context.getResources(), galleryFile.isGif()
-                            ? R.drawable.ic_round_gif_24 : (galleryFile.isVideo()
-                            ? R.drawable.ic_outline_video_file_24 : (galleryFile.isText() ? R.drawable.outline_text_snippet_24 : R.drawable.ic_round_folder_open_24)),
-                    context.getTheme()));
+            int drawableId;
+            if (galleryFile.isGif()) {
+                drawableId = R.drawable.ic_round_gif_24;
+                if (galleryFile.getOriginalName() != null && galleryFile.getOriginalName().toLowerCase().endsWith(".webp")) {
+                    drawableId = R.drawable.ic_round_webp_24;
+                }
+            } else if (galleryFile.isVideo()) {
+                drawableId = R.drawable.ic_outline_video_file_24;
+            } else if (galleryFile.isText()) {
+                drawableId = R.drawable.outline_text_snippet_24;
+            } else {
+                drawableId = R.drawable.ic_round_folder_open_24;
+            }
+            holder.binding.imgType.setImageDrawable(ResourcesCompat.getDrawable(context.getResources(), drawableId, context.getTheme()));
         } else {
             holder.binding.imgType.setVisibility(View.GONE);
         }
@@ -227,7 +237,31 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             }
             setItemFilename(holder, context, galleryFile);
         }
+        if (!galleryFile.isDirectory() && !galleryFile.isAllFolder()) {
+            loadOriginalFilename(galleryFile, context, holder);
+        }
         setClickListener(holder, context, galleryFile);
+    }
+
+    private void loadOriginalFilename(@NonNull GalleryFile galleryFile, FragmentActivity context, @NonNull GalleryGridViewHolder holder) {
+        if (galleryFile.isDirectory() || galleryFile.getOriginalName() != null) {
+            return;
+        }
+        new Thread(() -> {
+            try {
+                String originalFilename = Encryption.getOriginalFilename(context.getContentResolver().openInputStream(galleryFile.getUri()), password.getPassword(), false, galleryFile.getVersion());
+                galleryFile.setOriginalName(originalFilename);
+                context.runOnUiThread(() -> {
+                    int pos = holder.getBindingAdapterPosition();
+                    if (pos >= 0) {
+                        notifyItemChanged(pos, new Payload(Payload.TYPE_NEW_FILENAME));
+                    }
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
+                galleryFile.setOriginalName("");
+            }
+        }).start();
     }
 
     private void readText(FragmentActivity context, GalleryFile galleryFile, GalleryGridViewHolder holder) {
@@ -329,17 +363,38 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
     public void onBindViewHolder(@NonNull GalleryGridViewHolder holder, int position, @NonNull List<Object> payloads) {
         boolean found = false;
         for (Object o : payloads) {
-            if (o instanceof Payload) {
-                if (((Payload) o).type == Payload.TYPE_SELECT_ALL) {
+            if (o instanceof Payload payload) {
+                if (payload.type == Payload.TYPE_SELECT_ALL) {
                     updateSelectedView(holder, galleryFiles.get(position));
                     found = true;
                     break;
-                } else if (((Payload) o).type == Payload.TYPE_TOGGLE_FILENAME) {
+                } else if (payload.type == Payload.TYPE_TOGGLE_FILENAME) {
                     GalleryFile galleryFile = galleryFiles.get(position);
                     holder.binding.txtName.setVisibility(showFileNames || galleryFile.isDirectory() ? View.VISIBLE : View.GONE);
                     found = true;
-                } else if (((Payload) o).type == Payload.TYPE_NEW_FILENAME) {
+                } else if (payload.type == Payload.TYPE_NEW_FILENAME) {
                     setItemFilename(holder, weakReference.get(), galleryFiles.get(holder.getBindingAdapterPosition()));
+                    FragmentActivity context = weakReference.get();
+                    GalleryFile galleryFile = galleryFiles.get(holder.getBindingAdapterPosition());
+                    if (!isRootDir && (galleryFile.isGif() || galleryFile.isVideo() || galleryFile.isDirectory() || galleryFile.isText())) {
+                        holder.binding.imgType.setVisibility(View.VISIBLE);
+                        int drawableId;
+                        if (galleryFile.isGif()) {
+                            drawableId = R.drawable.ic_round_gif_24;
+                            if (galleryFile.getOriginalName() != null && galleryFile.getOriginalName().toLowerCase().endsWith(".webp")) {
+                                drawableId = R.drawable.ic_round_webp_24;
+                            }
+                        } else if (galleryFile.isVideo()) {
+                            drawableId = R.drawable.ic_outline_video_file_24;
+                        } else if (galleryFile.isText()) {
+                            drawableId = R.drawable.outline_text_snippet_24;
+                        } else {
+                            drawableId = R.drawable.ic_round_folder_open_24;
+                        }
+                        holder.binding.imgType.setImageDrawable(ResourcesCompat.getDrawable(context.getResources(), drawableId, context.getTheme()));
+                    } else {
+                        holder.binding.imgType.setVisibility(View.GONE);
+                    }
                     found = true;
                 }
             }

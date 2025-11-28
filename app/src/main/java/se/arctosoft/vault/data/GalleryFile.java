@@ -44,7 +44,8 @@ public class GalleryFile implements Comparable<GalleryFile> {
     private final AtomicInteger findFilesInDirectoryStatus = new AtomicInteger(FIND_FILES_NOT_STARTED);
     private GalleryFile firstFileInDirectoryWithThumb;
 
-    private final FileType fileType;
+    private FileType fileType;
+    private FileType overriddenFileType;
     private final String encryptedName, name;
     private final boolean isDirectory, isAllFolder;
     private final long lastModified, size;
@@ -158,6 +159,9 @@ public class GalleryFile implements Comparable<GalleryFile> {
 
     public void setOriginalName(String originalName) {
         this.originalName = originalName;
+        if ((this.fileType.isImage() || this.fileType.isGif()) && originalName != null && originalName.toLowerCase().endsWith(".webp")) {
+            this.overriddenFileType = FileType.GIF_V2;
+        }
     }
 
     @Nullable
@@ -186,15 +190,15 @@ public class GalleryFile implements Comparable<GalleryFile> {
     }
 
     public boolean isVideo() {
-        return fileType.type == FileType.TYPE_VIDEO;
+        return getFileType().type == FileType.TYPE_VIDEO;
     }
 
     public boolean isGif() {
-        return fileType.type == FileType.TYPE_GIF;
+        return getFileType().type == FileType.TYPE_GIF;
     }
 
     public boolean isText() {
-        return fileType.type == FileType.TYPE_TEXT;
+        return getFileType().type == FileType.TYPE_TEXT;
     }
 
     public long getSize() {
@@ -278,6 +282,9 @@ public class GalleryFile implements Comparable<GalleryFile> {
     }
 
     public FileType getFileType() {
+        if (overriddenFileType != null) {
+            return overriddenFileType;
+        }
         return fileType;
     }
 
@@ -338,11 +345,11 @@ public class GalleryFile implements Comparable<GalleryFile> {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         GalleryFile that = (GalleryFile) o;
-        return size == that.size && fileType == that.fileType && Objects.equals(encryptedName, that.encryptedName);
+        return size == that.size && getFileType() == that.getFileType() && Objects.equals(encryptedName, that.encryptedName);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(size, fileType, encryptedName);
+        return Objects.hash(size, getFileType(), encryptedName);
     }
 }
