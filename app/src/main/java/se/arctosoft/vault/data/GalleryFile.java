@@ -170,8 +170,15 @@ public class GalleryFile implements Comparable<GalleryFile> {
 
     public void setOriginalName(String originalName) {
         this.originalName = originalName;
-        if ((this.fileType.isImage() || this.fileType.isGif()) && originalName != null && originalName.toLowerCase().endsWith(".webp")) {
-              this.overriddenFileType = FileType.GIF_V5;
+    }
+
+    public void setFileTypeFromContent(boolean isAnimated) {
+        if (originalName != null && originalName.toLowerCase().endsWith(".webp")) {
+            if (isAnimated) {
+                this.overriddenFileType = FileType.GIF_V5;
+            } else {
+                this.overriddenFileType = FileType.IMAGE_V5;
+            }
         }
     }
 

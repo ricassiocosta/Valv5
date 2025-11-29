@@ -483,11 +483,20 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
 
     private void loadGif(GalleryFile galleryFile, GalleryPagerViewHolder.GalleryPagerGifViewHolder holder, FragmentActivity context) {
         Log.d("GalleryPagerAdapter", "loadGif: uri=" + galleryFile.getUri() + ", version=" + galleryFile.getVersion());
-        Glide.with(context)
-                .asGif()
-                .load(new EncryptedFile(galleryFile.getUri(), galleryFile.getVersion()))
-                .apply(GlideStuff.getRequestOptions(useDiskCache))
-                .into(holder.binding.gifImageView);
+        var glideRequest = Glide.with(context);
+
+        if (galleryFile.getOriginalName() != null && galleryFile.getOriginalName().toLowerCase().endsWith(".webp")) {
+            glideRequest
+                    .load(new EncryptedFile(galleryFile.getUri(), galleryFile.getVersion()))
+                    .apply(GlideStuff.getRequestOptions(useDiskCache))
+                    .into(holder.binding.gifImageView);
+        } else {
+            glideRequest
+                    .asGif()
+                    .load(new EncryptedFile(galleryFile.getUri(), galleryFile.getVersion()))
+                    .apply(GlideStuff.getRequestOptions(useDiskCache))
+                    .into(holder.binding.gifImageView);
+        }
     }
 
     private void showButtons(GalleryPagerViewHolder holder, boolean show) {

@@ -44,6 +44,8 @@ import com.bumptech.glide.request.RequestListener;
 import com.bumptech.glide.request.target.Target;
 
 import java.io.File;
+import java.io.InputStream;
+import java.io.BufferedInputStream;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Date;
@@ -256,9 +258,23 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             return;
         }
         new Thread(() -> {
+            Encryption.Streams streams = null;
             try {
-                String originalFilename = Encryption.getOriginalFilename(context.getContentResolver().openInputStream(galleryFile.getUri()), password.getPassword(), false, galleryFile.getVersion());
+                InputStream inputStream = context.getContentResolver().openInputStream(galleryFile.getUri());
+                streams = Encryption.getCipherInputStream(inputStream, password.getPassword(), false, galleryFile.getVersion());
+                String originalFilename = streams.getOriginalFileName();
                 galleryFile.setOriginalName(originalFilename);
+
+                if (originalFilename != null && originalFilename.toLowerCase().endsWith(".webp")) {
+                    InputStream decryptedStream = streams.getInputStream();
+                    if (decryptedStream != null) {
+                        // It's important to wrap the stream in a BufferedInputStream to support mark/reset
+                        InputStream bufferedDecryptedStream = new BufferedInputStream(decryptedStream);
+                        boolean isAnimated = Encryption.isAnimatedWebp(bufferedDecryptedStream);
+                        galleryFile.setFileTypeFromContent(isAnimated);
+                    }
+                }
+
                 context.runOnUiThread(() -> {
                     int pos = holder.getBindingAdapterPosition();
                     if (pos >= 0) {
@@ -268,6 +284,10 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             } catch (Exception e) {
                 e.printStackTrace();
                 galleryFile.setOriginalName("");
+            } finally {
+                if (streams != null) {
+                    streams.close();
+                }
             }
         }).start();
     }

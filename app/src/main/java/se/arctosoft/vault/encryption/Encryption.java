@@ -1371,6 +1371,47 @@ public class Encryption {
         }
     }
 
+    public static boolean isAnimatedWebp(@NonNull InputStream inputStream) {
+        if (!inputStream.markSupported()) {
+            return false;
+        }
+        try {
+            inputStream.mark(30);
+            byte[] buffer = new byte[30];
+
+            int totalBytesRead = 0;
+            int bytesRead;
+            while(totalBytesRead < 30 && (bytesRead = inputStream.read(buffer, totalBytesRead, 30 - totalBytesRead)) != -1) {
+                totalBytesRead += bytesRead;
+            }
+
+            inputStream.reset();
+
+            if (totalBytesRead < 30) {
+                return false;
+            }
+
+            // Check for RIFF header
+            if (buffer[0] != 'R' || buffer[1] != 'I' || buffer[2] != 'F' || buffer[3] != 'F') {
+                return false;
+            }
+
+            // Check for WEBP format
+            if (buffer[8] != 'W' || buffer[9] != 'E' || buffer[10] != 'B' || buffer[11] != 'P') {
+                return false;
+            }
+
+            // Check for VP8X chunk
+            if (buffer[12] == 'V' && buffer[13] == 'P' && buffer[14] == '8' && buffer[15] == 'X') {
+                // The animation bit is the second bit of the feature byte (at offset 20)
+                return (buffer[20] & 0x02) != 0;
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
     public interface IOnUriResult {
         void onUriResult(Uri outputUri);
 
