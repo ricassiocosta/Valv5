@@ -29,6 +29,7 @@ import com.bumptech.glide.load.data.DataFetcher;
 
 import org.json.JSONException;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.GeneralSecurityException;
@@ -63,7 +64,25 @@ public class CipherDataFetcher implements DataFetcher<InputStream> {
                     version > 1 || !uri.getLastPathSegment().contains(FileType.GIF_V1.suffixPrefix), // don't load as thumb for GIF file
                     version
             );
-            callback.onDataReady(streams.getInputStream());
+            
+            // For V5 (detected by compositeStreams presence), read file content into memory
+            // This prevents the stream from being closed while Glide is decoding
+            if (streams.compositeStreams != null) {
+                byte[] fileBytes = streams.getFileBytes();
+                if (fileBytes != null) {
+                    callback.onDataReady(new ByteArrayInputStream(fileBytes));
+                } else {
+                    callback.onLoadFailed(new IOException("Failed to read V5 file bytes"));
+                }
+            } else {
+                // For V1-V4, return the stream directly
+                InputStream data = streams.getInputStream();
+                if (data != null) {
+                    callback.onDataReady(data);
+                } else {
+                    callback.onLoadFailed(new IOException("Failed to get input stream"));
+                }
+            }
         } catch (GeneralSecurityException | IOException | InvalidPasswordException |
                  JSONException e) {
             //e.printStackTrace();

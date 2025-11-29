@@ -27,15 +27,23 @@ public enum FileType {
     IMAGE_V1(1, ".jpg", Encryption.PREFIX_IMAGE_FILE, 1),
     IMAGE_V2(1, ".jpg", Encryption.SUFFIX_IMAGE_FILE, 2),
     IMAGE_V3(1, ".jpg", Encryption.SUFFIX_GENERIC_FILE, 3),
+    IMAGE_V4(1, ".jpg", Encryption.SUFFIX_GENERIC_FILE, 4),
+    IMAGE_V5(1, ".jpg", Encryption.SUFFIX_GENERIC_FILE, 5),
     GIF_V1(2, ".gif", Encryption.PREFIX_GIF_FILE, 1),
     GIF_V2(2, ".gif", Encryption.SUFFIX_GIF_FILE, 2),
     GIF_V3(2, ".gif", Encryption.SUFFIX_GENERIC_FILE, 3),
+    GIF_V4(2, ".gif", Encryption.SUFFIX_GENERIC_FILE, 4),
+    GIF_V5(2, ".gif", Encryption.SUFFIX_GENERIC_FILE, 5),
     VIDEO_V1(3, ".mp4", Encryption.PREFIX_VIDEO_FILE, 1),
     VIDEO_V2(3, ".mp4", Encryption.SUFFIX_VIDEO_FILE, 2),
     VIDEO_V3(3, ".mp4", Encryption.SUFFIX_GENERIC_FILE, 3),
+    VIDEO_V4(3, ".mp4", Encryption.SUFFIX_GENERIC_FILE, 4),
+    VIDEO_V5(3, ".mp4", Encryption.SUFFIX_GENERIC_FILE, 5),
     TEXT_V1(4, ".txt", Encryption.PREFIX_TEXT_FILE, 1),
     TEXT_V2(4, ".txt", Encryption.SUFFIX_TEXT_FILE, 2),
-    TEXT_V3(4, ".txt", Encryption.SUFFIX_GENERIC_FILE, 3);
+    TEXT_V3(4, ".txt", Encryption.SUFFIX_GENERIC_FILE, 3),
+    TEXT_V4(4, ".txt", Encryption.SUFFIX_GENERIC_FILE, 4),
+    TEXT_V5(4, ".txt", Encryption.SUFFIX_GENERIC_FILE, 5);
 
     public static final int TYPE_DIRECTORY = 0;
     public static final int TYPE_IMAGE = 1;
@@ -83,13 +91,13 @@ public enum FileType {
     public static FileType fromTypeAndVersion(int type, int version) {
         switch (type) {
             case TYPE_IMAGE:
-                return version == 1 ? IMAGE_V1 : (version == 2 ? IMAGE_V2 : IMAGE_V3);
+                return version == 1 ? IMAGE_V1 : (version == 2 ? IMAGE_V2 : (version == 4 ? IMAGE_V4 : (version == 5 ? IMAGE_V5 : IMAGE_V3)));
             case TYPE_GIF:
-                return version == 1 ? GIF_V1 : (version == 2 ? GIF_V2 : GIF_V3);
+                return version == 1 ? GIF_V1 : (version == 2 ? GIF_V2 : (version == 4 ? GIF_V4 : (version == 5 ? GIF_V5 : GIF_V3)));
             case TYPE_VIDEO:
-                return version == 1 ? VIDEO_V1 : (version == 2 ? VIDEO_V2 : VIDEO_V3);
+                return version == 1 ? VIDEO_V1 : (version == 2 ? VIDEO_V2 : (version == 4 ? VIDEO_V4 : (version == 5 ? VIDEO_V5 : VIDEO_V3)));
             case TYPE_TEXT:
-                return version == 1 ? TEXT_V1 : (version == 2 ? TEXT_V2 : TEXT_V3);
+                return version == 1 ? TEXT_V1 : (version == 2 ? TEXT_V2 : (version == 4 ? TEXT_V4 : (version == 5 ? TEXT_V5 : TEXT_V3)));
             case TYPE_DIRECTORY:
             default:
                 return DIRECTORY;
@@ -101,18 +109,18 @@ public enum FileType {
     }
 
     public boolean isImage() {
-        return this == IMAGE_V1 || this == IMAGE_V2 || this == IMAGE_V3;
+        return this == IMAGE_V1 || this == IMAGE_V2 || this == IMAGE_V3 || this == IMAGE_V4 || this == IMAGE_V5;
     }
 
     public boolean isGif() {
-        return this == GIF_V1 || this == GIF_V2 || this == GIF_V3;
+        return this == GIF_V1 || this == GIF_V2 || this == GIF_V3 || this == GIF_V4 || this == GIF_V5;
     }
 
     public boolean isVideo() {
-        return this == VIDEO_V1 || this == VIDEO_V2 || this == VIDEO_V3;
+        return this == VIDEO_V1 || this == VIDEO_V2 || this == VIDEO_V3 || this == VIDEO_V4 || this == VIDEO_V5;
     }
 
     public boolean isText() {
-        return this == TEXT_V1 || this == TEXT_V2 || this == TEXT_V3;
+        return this == TEXT_V1 || this == TEXT_V2 || this == TEXT_V3 || this == TEXT_V4 || this == TEXT_V5;
     }
 }

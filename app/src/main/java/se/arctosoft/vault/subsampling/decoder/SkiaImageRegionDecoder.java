@@ -30,6 +30,9 @@ import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -80,9 +83,28 @@ public class SkiaImageRegionDecoder implements ImageRegionDecoder {
         try {
             ContentResolver contentResolver = context.getContentResolver();
             streams = Encryption.getCipherInputStream(contentResolver.openInputStream(uri), password, false, version);
-            decoder = BitmapRegionDecoder.newInstance(streams.getInputStream(), false);
+            
+            // For V5 (detected by compositeStreams presence), use getFileBytes() 
+            // to get the complete file content.
+            // BitmapRegionDecoder needs a seekable stream that stays open during decoding.
+            InputStream decoderInput;
+            if (streams.compositeStreams != null) {
+                byte[] fileBytes = streams.getFileBytes();
+                if (fileBytes != null) {
+                    decoderInput = new ByteArrayInputStream(fileBytes);
+                } else {
+                    throw new IOException("Failed to read V5 file bytes for region decoder");
+                }
+            } else {
+                decoderInput = streams.getInputStream();
+            }
+            
+            decoder = BitmapRegionDecoder.newInstance(decoderInput, false);
         } finally {
             if (streams != null) {
+                // Don't close streams here for V5, as the ByteArrayInputStream doesn't need it
+                // For V1-V4, the stream might be needed by BitmapRegionDecoder
+                // Actually, it's safe to close as ByteArrayInputStream is already in memory
                 streams.close();
             }
         }

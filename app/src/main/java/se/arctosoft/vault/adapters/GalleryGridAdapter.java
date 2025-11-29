@@ -21,6 +21,7 @@ package se.arctosoft.vault.adapters;
 import android.content.Context;
 import android.graphics.drawable.Drawable;
 import android.icu.text.SimpleDateFormat;
+import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -187,11 +188,17 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             GalleryFile firstFile = galleryFile.getFirstFile();
             if (firstFile == null) {
                 Glide.with(context).clear(holder.binding.imageView);
-            } else {
+            } else if (firstFile.getThumbUri() != null) {
+                // Traditional thumbnail file (V1-V4)
                 Glide.with(context)
                         .load(firstFile.getThumbUri())
                         .apply(GlideStuff.getRequestOptions(useDiskCache))
                         .into(holder.binding.imageView);
+            } else if (firstFile.mayBeV5CompositeFile()) {
+                // V5 composite file - load thumbnail from inside the file
+                loadCompositeThumb(context, firstFile, holder);
+            } else {
+                Glide.with(context).clear(holder.binding.imageView);
             }
             holder.binding.txtName.setText(context.getString(R.string.gallery_adapter_folder_name, galleryFile.getNameWithPath(), galleryFile.getFileCount()));
         } else if (galleryFile.isText()) {
@@ -205,7 +212,12 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
         } else {
             //Log.e(TAG, "onBindViewHolder: load image, version " + galleryFile.getVersion() + ", " + galleryFile.getFileType().suffixPrefix);
             holder.binding.imageView.setVisibility(View.VISIBLE);
-            if (galleryFile.getThumbUri() != null) {
+            
+            // For V5 files with composite thumbnail, load from cache
+            // Use mayBeV5CompositeFile() since we can't detect V5 from filename alone
+            if (galleryFile.getThumbUri() == null && galleryFile.mayBeV5CompositeFile()) {
+                loadCompositeThumb(context, galleryFile, holder);
+            } else if (galleryFile.getThumbUri() != null) {
                 Glide.with(context)
                         .load(galleryFile.getThumbUri())
                         .apply(GlideStuff.getRequestOptions(useDiskCache))
@@ -480,6 +492,44 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
         showFileNames = !showFileNames;
         notifyItemRangeChanged(0, galleryFiles.size(), new Payload(Payload.TYPE_TOGGLE_FILENAME));
         return showFileNames;
+    }
+
+    /**
+     * Load thumbnail from V5 composite file.
+     * For V5 files, the thumbnail is stored within the main encrypted file.
+     */
+    private void loadCompositeThumb(FragmentActivity context, GalleryFile galleryFile, @NonNull GalleryGridViewHolder holder) {
+        new Thread(() -> {
+            try {
+                char[] pwd = Password.getInstance().getPassword();
+                
+                Uri thumbUri = Encryption.readCompositeThumbToCache(galleryFile.getUri(), context, pwd);
+                if (thumbUri != null) {
+                    galleryFile.setThumbUri(thumbUri);
+                    context.runOnUiThread(() -> {
+                        Glide.with(context)
+                                .load(thumbUri)
+                                .apply(GlideStuff.getRequestOptions(useDiskCache))
+                                .into(holder.binding.imageView);
+                    });
+                } else {
+                    context.runOnUiThread(() -> {
+                        Glide.with(context)
+                                .load(R.drawable.outline_broken_image_24)
+                                .centerInside()
+                                .into(holder.binding.imageView);
+                    });
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                context.runOnUiThread(() -> {
+                    Glide.with(context)
+                            .load(R.drawable.outline_broken_image_24)
+                            .centerInside()
+                            .into(holder.binding.imageView);
+                });
+            }
+        }).start();
     }
 
     @NonNull

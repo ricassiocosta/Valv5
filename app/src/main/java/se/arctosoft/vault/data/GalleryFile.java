@@ -57,6 +57,7 @@ public class GalleryFile implements Comparable<GalleryFile> {
     private Uri thumbUri, noteUri, decryptedCacheUri;
     private String originalName, nameWithPath, note, text;
     private int fileCount, orientation;
+    private se.arctosoft.vault.encryption.CompositeStreams compositeStreams;  // V5: Lazy-loaded composite streams
 
     private GalleryFile(String name) {
         this.fileUri = null;
@@ -251,6 +252,12 @@ public class GalleryFile implements Comparable<GalleryFile> {
 
     @Nullable
     public Uri getThumbUri() {
+        // For V5 files with composite thumbnail, load from cache
+        if (version >= Encryption.ENCRYPTION_VERSION_5 && thumbUri == null && hasCompositeThumb()) {
+            // This would need context, so we return null here
+            // The adapter should handle V5 thumbnail loading separately
+            return null;
+        }
         return thumbUri;
     }
 
@@ -290,11 +297,87 @@ public class GalleryFile implements Comparable<GalleryFile> {
     }
 
     public boolean hasThumb() {
-        return thumbUri != null;
+        // Check traditional thumb file (V1-V4)
+        if (thumbUri != null) {
+            return true;
+        }
+        // Check if this might be a V5 composite file with embedded thumbnail
+        return mayBeV5CompositeFile();
     }
 
     public boolean hasNote() {
-        return noteUri != null || note != null;
+        // Check traditional note file (V1-V4)
+        if (noteUri != null || note != null) {
+            return true;
+        }
+        // Check V5 composite note section
+        return hasCompositeNote();
+    }
+
+    /**
+     * V5: Set CompositeStreams for lazy loading of sections.
+     * Used for V5 composite files where thumbnail/note are stored within the main file.
+     */
+    public void setCompositeStreams(@Nullable se.arctosoft.vault.encryption.CompositeStreams compositeStreams) {
+        this.compositeStreams = compositeStreams;
+    }
+
+    /**
+     * V5: Get CompositeStreams if available (for reading sections from composite file).
+     */
+    @Nullable
+    public se.arctosoft.vault.encryption.CompositeStreams getCompositeStreams() {
+        return compositeStreams;
+    }
+
+    /**
+     * V5: Check if this is a V5 composite file with a thumbnail section.
+     * Returns true if compositeStreams is available and has thumbnail.
+     */
+    public boolean hasCompositeThumb() {
+        if (compositeStreams == null) {
+            return false;
+        }
+        try {
+            return compositeStreams.hasThumbnailSection();
+        } catch (java.io.IOException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Check if this file might be a V5 composite file (thumbnail embedded).
+     * Returns true if:
+     * - The file uses .valv generic suffix (V3+)
+     * - No separate thumbnail URI was found
+     * - This is not a text file
+     * 
+     * This is used to try loading composite thumbnails for files where
+     * we cannot determine the version from the filename alone.
+     */
+    public boolean mayBeV5CompositeFile() {
+        // Must be a .valv file (V3+), not a text file, and no separate thumb found
+        return encryptedName != null 
+                && encryptedName.endsWith(Encryption.SUFFIX_GENERIC_FILE)
+                && !encryptedName.endsWith(".t" + Encryption.SUFFIX_GENERIC_FILE)  // Not a V4 thumb file
+                && !encryptedName.endsWith(".n" + Encryption.SUFFIX_GENERIC_FILE)  // Not a V4 note file
+                && thumbUri == null  // No separate thumbnail found
+                && !isText()         // Text files don't have thumbnails
+                && !isDirectory;
+    }
+
+    /**
+     * V5: Check if this is a V5 composite file with a note section.
+     */
+    public boolean hasCompositeNote() {
+        if (compositeStreams == null) {
+            return false;
+        }
+        try {
+            return compositeStreams.hasNoteSection();
+        } catch (java.io.IOException e) {
+            return false;
+        }
     }
 
     public FileType getFileType() {

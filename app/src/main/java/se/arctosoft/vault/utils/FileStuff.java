@@ -95,15 +95,14 @@ public class FileStuff {
         List<CursorFile> documentThumbs = new ArrayList<>();
         List<CursorFile> documentNote = new ArrayList<>();
         List<GalleryFile> galleryFiles = new ArrayList<>();
+        
         for (CursorFile file : files) {
             String name = file.getName();
             if (!name.startsWith(Encryption.ENCRYPTED_PREFIX) && !name.endsWith(Encryption.ENCRYPTED_SUFFIX) && !file.isDirectory()) {
                 continue;
             }
-            //Log.e(TAG, "getEncryptedFilesInFolder: found " + name);
 
-            // Check V1/V2 suffixes FIRST before checking V3 pattern
-            // This is important because V2 thumbs end with -t.valv which also ends with .valv
+            // Check V1/V2 suffixes FIRST before checking V3/V4 patterns
             if (name.endsWith(Encryption.SUFFIX_THUMB) || name.startsWith(Encryption.PREFIX_THUMB)) {
                 // V1/V2 thumbnails
                 documentThumbs.add(file);
@@ -111,12 +110,21 @@ public class FileStuff {
                 // V1/V2 notes
                 documentNote.add(file);
             } else if (name.endsWith(Encryption.SUFFIX_GENERIC_FILE) && !name.startsWith(Encryption.ENCRYPTED_PREFIX)) {
-                // V3 file - check if it's a thumbnail or note based on _1 or _2 pattern
-                if (name.endsWith("_1" + Encryption.SUFFIX_GENERIC_FILE)) {
+                // V3/V4 file - check if it's a thumbnail or note based on pattern
+                if (name.endsWith(".t" + Encryption.SUFFIX_GENERIC_FILE)) {
+                    // V4: Thumbnail with .t.valv suffix
+                    documentThumbs.add(file);
+                } else if (name.endsWith(".n" + Encryption.SUFFIX_GENERIC_FILE)) {
+                    // V4: Note with .n.valv suffix
+                    documentNote.add(file);
+                } else if (name.endsWith("_1" + Encryption.SUFFIX_GENERIC_FILE)) {
+                    // V3 Fase 1: Thumbnail with _1.valv suffix
                     documentThumbs.add(file);
                 } else if (name.endsWith("_2" + Encryption.SUFFIX_GENERIC_FILE)) {
+                    // V3 Fase 1: Note with _2.valv suffix
                     documentNote.add(file);
                 } else {
+                    // Plain main file (V3/V4)
                     documentFiles.add(file);
                 }
             } else {
@@ -124,14 +132,24 @@ public class FileStuff {
             }
         }
 
+        // Process files and find their thumbnails/notes
         for (CursorFile file : documentFiles) {
             if (file.isDirectory()) {
                 galleryFiles.add(GalleryFile.asDirectory(file));
                 continue;
             }
+            
             file.setNameWithoutPrefix(FileStuff.getNameWithoutPrefix(file.getName()));
+            
+            // Try finding by legacy _1/_2 pattern first (V3 Fase 1)
             CursorFile foundThumb = findCursorFile(documentThumbs, file.getNameWithoutPrefix());
             CursorFile foundNote = findCursorFile(documentNote, file.getNameWithoutPrefix());
+            
+            // For V4 files, thumbnails/notes use .t.valv/.n.valv pattern (random names)
+            // and cannot be correlated by base name. They will be found by:
+            // - Decryption time: reading JSON_THUMB_NAME from main file metadata
+            // - Or user accessing them individually
+            
             galleryFiles.add(GalleryFile.asFile(file, foundThumb, foundNote));
         }
         return galleryFiles;
