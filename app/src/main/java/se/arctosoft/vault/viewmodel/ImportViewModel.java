@@ -190,6 +190,8 @@ public class ImportViewModel extends ViewModel {
             final double[] bytesDone = new double[]{0};
             final long[] lastPublish = {0};
             final int totalSize = filesToImport.size() + textToImport.size();
+            final List<GalleryFile> importedFiles = new LinkedList<>();
+
             final IOnProgress onProgress = progress1 -> {
                 if (System.currentTimeMillis() - lastPublish[0] > 20) {
                     lastPublish[0] = System.currentTimeMillis();
@@ -201,14 +203,14 @@ public class ImportViewModel extends ViewModel {
             for (DocumentFile file : filesToImport) {
                 if (Thread.currentThread().isInterrupted() || interrupted.get()) {
                     if (onImportDoneFragment != null) {
-                        onImportDoneFragment.onDone(importToUri, sameDirectory, progress[0] - 1, errors, thumbErrors);
+                        onImportDoneFragment.onDone(importToUri, sameDirectory, progress[0] - 1, errors, thumbErrors, importedFiles);
                     }
                     Log.e(TAG, "startImport: interrupted, stop");
                     break;
                 }
-                Pair<Boolean, Boolean> imported = new Pair<>(false, false);
+                DocumentFile importedFile = null;
                 try {
-                    imported = Encryption.importFileToDirectory(activity, file, destinationDirectory, password.getPassword(), Encryption.ENCRYPTION_VERSION_5, onProgress, interrupted);
+                    importedFile = Encryption.importFileToDirectory(activity, file, destinationDirectory, password.getPassword(), Encryption.ENCRYPTION_VERSION_5, onProgress, interrupted);
                 } catch (SecurityException | IOException e) {
                     e.printStackTrace();
                 }
@@ -217,22 +219,19 @@ public class ImportViewModel extends ViewModel {
                 }
                 progress[0]++;
                 bytesDone[0] += file.length();
-                if (!imported.first) {
-                    //progress[0]--;
-                    //runOnUiThread(() -> Toaster.getInstance(GalleryActivity.this).showLong(getString(R.string.gallery_importing_error, file.getName())));
+                if (importedFile == null) {
                     errors++;
-                } else if (!imported.second) {
-                    //runOnUiThread(() -> Toaster.getInstance(GalleryActivity.this).showLong(getString(R.string.gallery_importing_error_no_thumb, file.getName())));
-                    thumbErrors++;
-                }
-                if (deleteAfterImport && imported.first) {
-                    file.delete();
+                } else {
+                    importedFiles.add(GalleryFile.asFile(new se.arctosoft.vault.data.CursorFile(importedFile.getName(), importedFile.getUri(), importedFile.lastModified(), importedFile.getType(), importedFile.length()), null, null));
+                    if (deleteAfterImport) {
+                        file.delete();
+                    }
                 }
             }
             for (GalleryFile text : textToImport) {
                 if (Thread.currentThread().isInterrupted() || interrupted.get()) {
                     if (onImportDoneFragment != null) {
-                        onImportDoneFragment.onDone(importToUri, sameDirectory, progress[0] - 1, errors, thumbErrors);
+                        onImportDoneFragment.onDone(importToUri, sameDirectory, progress[0] - 1, errors, thumbErrors, importedFiles);
                     }
                     Log.e(TAG, "startImport: interrupted, stop");
                     break;
@@ -249,15 +248,16 @@ public class ImportViewModel extends ViewModel {
                     errors++;
                 } else {
                     onProgress.onProgress(text.getSize());
+                    importedFiles.add(GalleryFile.asFile(new se.arctosoft.vault.data.CursorFile(importedFile.getName(), importedFile.getUri(), importedFile.lastModified(), importedFile.getType(), importedFile.length()), null, null));
                 }
             }
             Uri importToUri1 = getImportToUri();
             boolean sameDir = sameDirectory;
             if (onImportDoneBottomSheet != null) {
-                onImportDoneBottomSheet.onDone(importToUri1, sameDir, progress[0] - 1, errors, thumbErrors);
+                onImportDoneBottomSheet.onDone(importToUri1, sameDir, progress[0] - 1, errors, thumbErrors, importedFiles);
             }
             if (onImportDoneFragment != null) {
-                onImportDoneFragment.onDone(importToUri1, sameDir, progress[0] - 1, errors, thumbErrors);
+                onImportDoneFragment.onDone(importToUri1, sameDir, progress[0] - 1, errors, thumbErrors, importedFiles);
             }
             interrupted.set(false);
         });

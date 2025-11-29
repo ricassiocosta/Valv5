@@ -198,7 +198,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     }
 
     void initViewModels() {
-        importViewModel.setOnImportDoneFragment((destinationUri, sameDirectory, importedCount, failedCount, thumbErrorCount) -> {
+        importViewModel.setOnImportDoneFragment((destinationUri, sameDirectory, importedCount, failedCount, thumbErrorCount, importedFiles) -> {
             Log.e(TAG, "setOnImportDoneFragment: " + destinationUri + ", " + sameDirectory + ", " + importedCount + ", " + failedCount + ", " + thumbErrorCount);
 
             FragmentActivity activity = getActivity();
@@ -208,20 +208,15 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
             activity.runOnUiThread(() -> {
                 Toaster.getInstance(activity).showLong(getString(R.string.gallery_selected_files_imported, importedCount));
 
-                if (galleryViewModel.isRootDir() && galleryViewModel.getGalleryFiles().isEmpty()) {
-                    settings.addGalleryDirectory(destinationUri, true, null);
-                    addRootFolders();
-                } else if (sameDirectory || (destinationUri != null && galleryViewModel.getCurrentDirectoryUri() != null && destinationUri.toString().equals(galleryViewModel.getCurrentDirectoryUri().toString()))) { // files added to current directory
+                if (sameDirectory) { // files added to current directory
                     synchronized (LOCK) {
-                        int size = galleryViewModel.getGalleryFiles().size();
-                        galleryViewModel.getGalleryFiles().clear();
-                        galleryViewModel.getHiddenFiles().clear();
-                        galleryGridAdapter.notifyItemRangeRemoved(0, size);
-                        galleryPagerAdapter.notifyItemRangeRemoved(0, size);
-                        galleryViewModel.setInitialised(false);
-                        findFilesIn(galleryViewModel.getCurrentDirectoryUri());
+                        int startPos = galleryViewModel.getGalleryFiles().size();
+                        galleryViewModel.getGalleryFiles().addAll(importedFiles);
+                        galleryGridAdapter.notifyItemRangeInserted(startPos, importedFiles.size());
+                        galleryPagerAdapter.notifyItemRangeInserted(startPos, importedFiles.size());
                     }
                 } else {
+                    // a different directory was updated, so we need to find it and refresh it
                     synchronized (LOCK) {
                         for (int i = 0; i < galleryViewModel.getGalleryFiles().size(); i++) {
                             GalleryFile g = galleryViewModel.getGalleryFiles().get(i);

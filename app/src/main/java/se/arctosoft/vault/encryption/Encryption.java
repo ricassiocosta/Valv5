@@ -214,12 +214,12 @@ public class Encryption {
         return hexString.toString();
     }
 
-    public static Pair<Boolean, Boolean> importFileToDirectory(FragmentActivity context, DocumentFile sourceFile, DocumentFile directory, char[] password, int version, @Nullable IOnProgress onProgress, AtomicBoolean interrupted) throws IOException {
+    public static DocumentFile importFileToDirectory(FragmentActivity context, DocumentFile sourceFile, DocumentFile directory, char[] password, int version, @Nullable IOnProgress onProgress, AtomicBoolean interrupted) throws IOException {
         int fileType = getFileTypeFromMime(sourceFile.getType());
         return importFileToDirectory(context, sourceFile, directory, password, version, fileType, onProgress, interrupted);
     }
 
-    public static Pair<Boolean, Boolean> importFileToDirectory(FragmentActivity context, DocumentFile sourceFile, DocumentFile directory, char[] password, int version, int fileType, @Nullable IOnProgress onProgress, AtomicBoolean interrupted) throws IOException {
+    public static DocumentFile importFileToDirectory(FragmentActivity context, DocumentFile sourceFile, DocumentFile directory, char[] password, int version, int fileType, @Nullable IOnProgress onProgress, AtomicBoolean interrupted) throws IOException {
         if (password == null || password.length == 0) {
             throw new RuntimeException("No password");
         }
@@ -230,7 +230,7 @@ public class Encryption {
                 InputStream fileInputStream = context.getContentResolver().openInputStream(sourceFile.getUri());
                 if (fileInputStream == null) {
                     Log.e(TAG, "importFileToDirectory: could not open source file");
-                    return new Pair<>(false, false);
+                    return null;
                 }
 
                 // Get file size
@@ -257,7 +257,7 @@ public class Encryption {
                 }
 
                 // No note for file import (just metadata)
-                Pair<Boolean, Boolean> result = createCompositeFile(
+                DocumentFile result = createCompositeFile(
                         context,
                         fileInputStream,
                         fileSize,
@@ -278,7 +278,7 @@ public class Encryption {
 
             } catch (GeneralSecurityException | IOException | JSONException e) {
                 Log.e(TAG, "importFileToDirectory: V5 composite file creation failed", e);
-                return new Pair<>(false, false);
+                return null;
             }
         }
 
@@ -599,7 +599,7 @@ public class Encryption {
      * @param fileType File type enum value
      * @return Pair<success, hasThumb> - true if file created, true if thumbnail was included
      */
-    private static Pair<Boolean, Boolean> createCompositeFile(
+    private static DocumentFile createCompositeFile(
             FragmentActivity context,
             InputStream fileInputStream,
             long fileSize,
@@ -623,7 +623,7 @@ public class Encryption {
         DocumentFile tmpFile = outputDirectory.createFile("", tmpFileName);
         if (tmpFile == null) {
             Log.e(TAG, "createCompositeFile: could not create temporary file");
-            return new Pair<>(false, false);
+            return null;
         }
 
         try {
@@ -643,7 +643,7 @@ public class Encryption {
             if (finalFile == null) {
                 Log.e(TAG, "createCompositeFile: could not create final file");
                 tmpFile.delete();
-                return new Pair<>(false, false);
+                return null;
             }
 
             // Copy content from tmp to final
@@ -661,8 +661,7 @@ public class Encryption {
 
             tmpFile.delete();
 
-            boolean hadThumbnail = thumbnailInputStream != null && thumbnailSize > 0;
-            return new Pair<>(true, hadThumbnail);
+            return finalFile;
 
         } catch (Exception e) {
             Log.e(TAG, "createCompositeFile: error writing composite file", e);

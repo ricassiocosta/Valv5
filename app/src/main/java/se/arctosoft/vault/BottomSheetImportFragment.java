@@ -144,7 +144,7 @@ public class BottomSheetImportFragment extends BottomSheetDialogFragment {
             binding.deleteNote.setVisibility(View.GONE);
         }
 
-        importViewModel.setOnImportDoneBottomSheet((destinationUri, sameDirectory, importedCount, failedCount, thumbErrorCount) -> {
+        importViewModel.setOnImportDoneBottomSheet((destinationUri, sameDirectory, importedCount, failedCount, thumbErrorCount, importedFiles) -> {
             clearViewModel();
             dismiss();
         });
