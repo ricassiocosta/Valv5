@@ -1,6 +1,9 @@
 package se.arctosoft.vault;
 
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
@@ -20,6 +23,7 @@ import androidx.navigation.ui.NavigationUI;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import se.arctosoft.vault.data.Password;
 import se.arctosoft.vault.databinding.ActivityMainBinding;
@@ -33,6 +37,7 @@ public class MainActivity extends AppCompatActivity {
 
     private AppBarConfiguration appBarConfiguration;
     private ActivityMainBinding binding;
+    private BroadcastReceiver screenOffReceiver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -75,6 +80,18 @@ public class MainActivity extends AppCompatActivity {
                 handleSendMultiple(intent);
             }
         }
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        installScreenOffReceiver();
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        uninstallScreenOffReceiver();
     }
 
     private void handleSendSingle(@NonNull Intent intent) {
@@ -120,5 +137,39 @@ public class MainActivity extends AppCompatActivity {
             Password.lock(this, false);
         }
         super.onDestroy();
+    }
+
+    private void installScreenOffReceiver() {
+        if (screenOffReceiver == null) {
+            screenOffReceiver = new ScreenOffReceiver();
+            IntentFilter filter = new IntentFilter();
+            filter.addAction(Intent.ACTION_SCREEN_OFF);
+            registerReceiver(screenOffReceiver, filter);
+        }
+    }
+
+    private void uninstallScreenOffReceiver() {
+        if (screenOffReceiver != null) {
+            unregisterReceiver(screenOffReceiver);
+            screenOffReceiver = null;
+        }
+    }
+
+    public class ScreenOffReceiver extends BroadcastReceiver {
+        private static final String TAG = "ScreenOffReceiver";
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (Objects.equals(intent.getAction(), Intent.ACTION_SCREEN_OFF)) {
+                Log.d(TAG, "onReceive: ACTION_SCREEN_OFF");
+                NavHostFragment navHostFragment = (NavHostFragment) getSupportFragmentManager().findFragmentById(R.id.nav_host_fragment_content_main);
+                assert navHostFragment != null;
+                NavController navController = navHostFragment.getNavController();
+                if (navController.getCurrentDestination() != null && navController.getCurrentDestination().getId() != R.id.password) {
+                    Password.lock(MainActivity.this, false);
+                    finish();
+                }
+            }
+        }
     }
 }
