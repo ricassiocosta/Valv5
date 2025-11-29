@@ -173,6 +173,14 @@ public class GalleryFile implements Comparable<GalleryFile> {
         }
     }
 
+    /**
+     * Override the file type. Used when the actual type is determined from decrypted metadata.
+     * @param fileType The FileType to set as override
+     */
+    public void setOverriddenFileType(FileType fileType) {
+        this.overriddenFileType = fileType;
+    }
+
     @Nullable
     public String getOriginalName() {
         return originalName;

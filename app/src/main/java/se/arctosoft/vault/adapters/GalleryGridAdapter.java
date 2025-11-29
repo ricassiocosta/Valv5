@@ -53,6 +53,7 @@ import java.util.Locale;
 import se.arctosoft.vault.DirectoryFragment;
 import se.arctosoft.vault.R;
 import se.arctosoft.vault.adapters.viewholders.GalleryGridViewHolder;
+import se.arctosoft.vault.data.FileType;
 import se.arctosoft.vault.data.GalleryFile;
 import se.arctosoft.vault.data.Password;
 import se.arctosoft.vault.data.UniqueLinkedList;
@@ -495,23 +496,44 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
     }
 
     /**
-     * Load thumbnail from V5 composite file.
+     * Load thumbnail and metadata from V5 composite file.
      * For V5 files, the thumbnail is stored within the main encrypted file.
+     * Also updates the file type from the encrypted metadata.
      */
     private void loadCompositeThumb(FragmentActivity context, GalleryFile galleryFile, @NonNull GalleryGridViewHolder holder) {
         new Thread(() -> {
             try {
                 char[] pwd = Password.getInstance().getPassword();
                 
-                Uri thumbUri = Encryption.readCompositeThumbToCache(galleryFile.getUri(), context, pwd);
-                if (thumbUri != null) {
-                    galleryFile.setThumbUri(thumbUri);
-                    context.runOnUiThread(() -> {
-                        Glide.with(context)
-                                .load(thumbUri)
-                                .apply(GlideStuff.getRequestOptions(useDiskCache))
-                                .into(holder.binding.imageView);
-                    });
+                Encryption.V5MetadataResult metadata = Encryption.readCompositeMetadata(galleryFile.getUri(), context, pwd);
+                if (metadata != null) {
+                    // Update file type from metadata (critical for video/gif detection)
+                    if (metadata.fileType >= 0) {
+                        FileType realType = FileType.fromTypeAndVersion(metadata.fileType, 5);
+                        galleryFile.setOverriddenFileType(realType);
+                    }
+                    
+                    // Update original name if available
+                    if (metadata.originalName != null && !metadata.originalName.isEmpty()) {
+                        galleryFile.setOriginalName(metadata.originalName);
+                    }
+                    
+                    if (metadata.thumbUri != null) {
+                        galleryFile.setThumbUri(metadata.thumbUri);
+                        context.runOnUiThread(() -> {
+                            Glide.with(context)
+                                    .load(metadata.thumbUri)
+                                    .apply(GlideStuff.getRequestOptions(useDiskCache))
+                                    .into(holder.binding.imageView);
+                        });
+                    } else {
+                        context.runOnUiThread(() -> {
+                            Glide.with(context)
+                                    .load(R.drawable.outline_broken_image_24)
+                                    .centerInside()
+                                    .into(holder.binding.imageView);
+                        });
+                    }
                 } else {
                     context.runOnUiThread(() -> {
                         Glide.with(context)

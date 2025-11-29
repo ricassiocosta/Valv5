@@ -59,25 +59,40 @@ public class MyDataSource implements DataSource {
     @Override
     public long open(@NonNull DataSpec dataSpec) throws IOException {
         uri = dataSpec.uri;
+        Log.d(TAG, "open: uri=" + uri + ", version=" + version);
         try {
             InputStream fileStream = context.getContentResolver().openInputStream(uri);
             streams = Encryption.getCipherInputStream(fileStream, password.getPassword(), false, version);
+            Log.d(TAG, "open: streams created, compositeStreams=" + (streams.compositeStreams != null));
         } catch (GeneralSecurityException | InvalidPasswordException | JSONException e) {
             e.printStackTrace();
             Log.e(TAG, "open error", e);
             return 0;
         }
 
+        InputStream inputStream = streams.getInputStream();
+        Log.d(TAG, "open: inputStream=" + inputStream);
+        if (inputStream == null) {
+            Log.e(TAG, "open: inputStream is null!");
+            return 0;
+        }
+
         if (dataSpec.position != 0) {
-            long skipped = forceSkip(dataSpec.position, (CipherInputStream) streams.getInputStream());
+            Log.d(TAG, "open: skipping " + dataSpec.position + " bytes");
+            long skipped = forceSkip(dataSpec.position, inputStream);
+            Log.d(TAG, "open: skipped " + skipped + " bytes");
         }
         return dataSpec.length;
     }
 
-    private long forceSkip(long skipBytes, CipherInputStream inputStream) throws IOException {
+    private long forceSkip(long skipBytes, InputStream inputStream) throws IOException {
         long skipped = 0L;
         while (skipped < skipBytes) {
-            inputStream.read();
+            int read = inputStream.read();
+            if (read == -1) {
+                Log.w(TAG, "forceSkip: EOF reached after " + skipped + " bytes");
+                break;
+            }
             skipped++;
         }
         return skipped;
@@ -89,7 +104,14 @@ public class MyDataSource implements DataSource {
             return 0;
         }
 
-        return streams.getInputStream().read(buffer, offset, length);
+        InputStream inputStream = streams.getInputStream();
+        if (inputStream == null) {
+            Log.e(TAG, "read: inputStream is null!");
+            return -1;
+        }
+        int bytesRead = inputStream.read(buffer, offset, length);
+        Log.d(TAG, "read: requested=" + length + ", got=" + bytesRead);
+        return bytesRead;
     }
 
     @Nullable

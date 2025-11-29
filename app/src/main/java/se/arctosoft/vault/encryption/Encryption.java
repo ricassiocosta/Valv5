@@ -625,6 +625,24 @@ public class Encryption {
         }
     }
 
+    /**
+     * Result class for V5 composite file metadata reading.
+     * Contains thumbnail URI and file type information.
+     */
+    public static class V5MetadataResult {
+        @Nullable
+        public final Uri thumbUri;
+        public final int fileType;
+        @Nullable
+        public final String originalName;
+
+        public V5MetadataResult(@Nullable Uri thumbUri, int fileType, @Nullable String originalName) {
+            this.thumbUri = thumbUri;
+            this.fileType = fileType;
+            this.originalName = originalName;
+        }
+    }
+
     private static void createFile(FragmentActivity context, Uri input, DocumentFile outputFile, char[] password, String sourceFileName, @Nullable IOnProgress onProgress, int version, AtomicBoolean interrupted) throws GeneralSecurityException, IOException, JSONException {
         createFile(context, input, outputFile, password, sourceFileName, onProgress, version, -1, interrupted);
     }
@@ -1406,6 +1424,56 @@ public class Encryption {
             cis.close();
             inputStream.close();
             return null;
+        } catch (GeneralSecurityException | InvalidPasswordException | JSONException |
+                 IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * Read metadata and thumbnail from V5 composite file.
+     * Returns both the thumbnail URI and the actual file type.
+     *
+     * @param encryptedInput The V5 file URI
+     * @param context Android context
+     * @param password Encryption password
+     * @return V5MetadataResult with thumbUri, fileType, and originalName; or null on error
+     */
+    @Nullable
+    public static V5MetadataResult readCompositeMetadata(@NonNull Uri encryptedInput, Context context, char[] password) {
+        try {
+            InputStream inputStream = context.getContentResolver().openInputStream(encryptedInput);
+            Streams cis = getCipherInputStream(inputStream, password, false, ENCRYPTION_VERSION_5);
+
+            Uri thumbUri = null;
+            if (cis.compositeStreams != null && cis.compositeStreams.hasThumbnailSection()) {
+                // Create cache file for thumbnail
+                File cacheDir = context.getCacheDir();
+                cacheDir.mkdir();
+                Path thumbFile = Files.createTempFile(cacheDir.toPath(), null, ".jpg");
+                
+                // Write thumbnail to cache
+                try (InputStream thumbInputStream = cis.compositeStreams.getThumbnailInputStream();
+                     OutputStream fos = new FileOutputStream(thumbFile.toFile())) {
+                    if (thumbInputStream != null) {
+                        byte[] buffer = new byte[8192];
+                        int read;
+                        while ((read = thumbInputStream.read(buffer)) != -1) {
+                            fos.write(buffer, 0, read);
+                        }
+                    }
+                }
+                thumbUri = Uri.fromFile(thumbFile.toFile());
+            }
+
+            int fileType = cis.getFileType();
+            String originalName = cis.getOriginalFileName();
+            
+            cis.close();
+            inputStream.close();
+            
+            return new V5MetadataResult(thumbUri, fileType, originalName);
         } catch (GeneralSecurityException | InvalidPasswordException | JSONException |
                  IOException e) {
             e.printStackTrace();
