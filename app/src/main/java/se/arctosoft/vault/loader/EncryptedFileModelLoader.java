@@ -19,32 +19,33 @@
 package se.arctosoft.vault.loader;
 
 import android.content.Context;
-import android.net.Uri;
-import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
-import com.bumptech.glide.Glide;
-import com.bumptech.glide.GlideBuilder;
-import com.bumptech.glide.Registry;
-import com.bumptech.glide.annotation.GlideModule;
-import com.bumptech.glide.module.AppGlideModule;
+import com.bumptech.glide.load.Options;
+import com.bumptech.glide.load.model.ModelLoader;
+import com.bumptech.glide.signature.ObjectKey;
 
 import java.io.InputStream;
 
 import se.arctosoft.vault.data.EncryptedFile;
 
-@GlideModule
-public class MyAppGlideModule extends AppGlideModule {
+public class EncryptedFileModelLoader implements ModelLoader<EncryptedFile, InputStream> {
+    private final Context context;
 
+    public EncryptedFileModelLoader(@NonNull Context context) {
+        this.context = context.getApplicationContext();
+    }
+
+    @Nullable
     @Override
-    public void registerComponents(@NonNull Context context, @NonNull Glide glide, @NonNull Registry registry) {
-        registry.prepend(EncryptedFile.class, InputStream.class, new EncryptedFileModelLoaderFactory(context));
+    public LoadData<InputStream> buildLoadData(@NonNull EncryptedFile encryptedFile, int width, int height, @NonNull Options options) {
+        return new LoadData<>(new ObjectKey(encryptedFile.getUri()), new CipherDataFetcher(context, encryptedFile.getUri(), encryptedFile.getVersion()));
     }
 
     @Override
-    public void applyOptions(@NonNull Context context, @NonNull GlideBuilder builder) {
-        builder.setLogLevel(Log.ERROR);
-        super.applyOptions(context, builder);
+    public boolean handles(@NonNull EncryptedFile encryptedFile) {
+        return true;
     }
 }

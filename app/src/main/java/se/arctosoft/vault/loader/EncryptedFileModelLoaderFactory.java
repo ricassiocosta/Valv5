@@ -19,32 +19,32 @@
 package se.arctosoft.vault.loader;
 
 import android.content.Context;
-import android.net.Uri;
-import android.util.Log;
 
 import androidx.annotation.NonNull;
 
-import com.bumptech.glide.Glide;
-import com.bumptech.glide.GlideBuilder;
-import com.bumptech.glide.Registry;
-import com.bumptech.glide.annotation.GlideModule;
-import com.bumptech.glide.module.AppGlideModule;
+import com.bumptech.glide.load.model.ModelLoader;
+import com.bumptech.glide.load.model.ModelLoaderFactory;
+import com.bumptech.glide.load.model.MultiModelLoaderFactory;
 
 import java.io.InputStream;
 
 import se.arctosoft.vault.data.EncryptedFile;
 
-@GlideModule
-public class MyAppGlideModule extends AppGlideModule {
+public class EncryptedFileModelLoaderFactory implements ModelLoaderFactory<EncryptedFile, InputStream> {
+    private final Context context;
 
+    public EncryptedFileModelLoaderFactory(@NonNull Context context) {
+        this.context = context.getApplicationContext();
+    }
+
+    @NonNull
     @Override
-    public void registerComponents(@NonNull Context context, @NonNull Glide glide, @NonNull Registry registry) {
-        registry.prepend(EncryptedFile.class, InputStream.class, new EncryptedFileModelLoaderFactory(context));
+    public ModelLoader<EncryptedFile, InputStream> build(@NonNull MultiModelLoaderFactory multiFactory) {
+        return new EncryptedFileModelLoader(context);
     }
 
     @Override
-    public void applyOptions(@NonNull Context context, @NonNull GlideBuilder builder) {
-        builder.setLogLevel(Log.ERROR);
-        super.applyOptions(context, builder);
+    public void teardown() {
+
     }
 }

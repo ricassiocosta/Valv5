@@ -76,6 +76,7 @@ import se.arctosoft.vault.adapters.viewholders.GalleryPagerViewHolder;
 import se.arctosoft.vault.data.FileType;
 import se.arctosoft.vault.data.GalleryFile;
 import se.arctosoft.vault.data.Password;
+import se.arctosoft.vault.data.EncryptedFile;
 import se.arctosoft.vault.databinding.AdapterGalleryViewpagerItemBinding;
 import se.arctosoft.vault.databinding.AdapterGalleryViewpagerItemDirectoryBinding;
 import se.arctosoft.vault.databinding.AdapterGalleryViewpagerItemGifBinding;
@@ -484,7 +485,7 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
         Log.d("GalleryPagerAdapter", "loadGif: uri=" + galleryFile.getUri() + ", version=" + galleryFile.getVersion());
         Glide.with(context)
                 .asGif()
-                .load(galleryFile.getUri())
+                .load(new EncryptedFile(galleryFile.getUri(), galleryFile.getVersion()))
                 .apply(GlideStuff.getRequestOptions(useDiskCache))
                 .into(holder.binding.gifImageView);
     }
