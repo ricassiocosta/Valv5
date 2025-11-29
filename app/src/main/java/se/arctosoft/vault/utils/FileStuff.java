@@ -102,10 +102,23 @@ public class FileStuff {
             }
             //Log.e(TAG, "getEncryptedFilesInFolder: found " + name);
 
+            // Check V1/V2 suffixes FIRST before checking V3 pattern
+            // This is important because V2 thumbs end with -t.valv which also ends with .valv
             if (name.endsWith(Encryption.SUFFIX_THUMB) || name.startsWith(Encryption.PREFIX_THUMB)) {
+                // V1/V2 thumbnails
                 documentThumbs.add(file);
             } else if (name.endsWith(Encryption.SUFFIX_NOTE_FILE) || name.startsWith(Encryption.PREFIX_NOTE_FILE)) {
+                // V1/V2 notes
                 documentNote.add(file);
+            } else if (name.endsWith(Encryption.SUFFIX_GENERIC_FILE) && !name.startsWith(Encryption.ENCRYPTED_PREFIX)) {
+                // V3 file - check if it's a thumbnail or note based on _1 or _2 pattern
+                if (name.endsWith("_1" + Encryption.SUFFIX_GENERIC_FILE)) {
+                    documentThumbs.add(file);
+                } else if (name.endsWith("_2" + Encryption.SUFFIX_GENERIC_FILE)) {
+                    documentNote.add(file);
+                } else {
+                    documentFiles.add(file);
+                }
             } else {
                 documentFiles.add(file);
             }
@@ -173,7 +186,16 @@ public class FileStuff {
     }
 
     public static String getNameWithoutPrefix(@NonNull String encryptedName) {
-        if (encryptedName.startsWith(Encryption.ENCRYPTED_PREFIX)) {
+        // V3 pattern: basename[_1|_2].valv where _1 is thumbnail, _2 is note
+        if (encryptedName.endsWith(Encryption.SUFFIX_GENERIC_FILE)) {
+            // V3 file
+            String baseName = encryptedName.substring(0, encryptedName.lastIndexOf(Encryption.SUFFIX_GENERIC_FILE));
+            // Remove _1 (thumbnail) or _2 (note) suffix if present
+            if (baseName.endsWith("_1") || baseName.endsWith("_2")) {
+                baseName = baseName.substring(0, baseName.length() - 2);
+            }
+            return baseName;
+        } else if (encryptedName.startsWith(Encryption.ENCRYPTED_PREFIX)) {
             return encryptedName.substring(encryptedName.indexOf("-") + 1);
         } else {
             return encryptedName.substring(0, encryptedName.lastIndexOf("-"));
@@ -271,9 +293,15 @@ public class FileStuff {
         }
         String generatedName = StringStuff.getRandomFileName();
         int version = sourceFile.getVersion();
-        DocumentFile file = directory.createFile("", version < 2 ? sourceFile.getFileType().suffixPrefix + generatedName : generatedName + sourceFile.getFileType().suffixPrefix);
-        DocumentFile thumbFile = sourceFile.getThumbUri() == null ? null : directory.createFile("", version < 2 ? Encryption.PREFIX_THUMB + generatedName : generatedName + Encryption.SUFFIX_THUMB);
-        DocumentFile noteFile = sourceFile.getNoteUri() == null ? null : directory.createFile("", version < 2 ? Encryption.PREFIX_NOTE_FILE + generatedName : generatedName + Encryption.SUFFIX_NOTE_FILE);
+        
+        String fileSuffix = version >= 3 ? Encryption.SUFFIX_GENERIC_FILE : (version < 2 ? sourceFile.getFileType().suffixPrefix : sourceFile.getFileType().suffixPrefix);
+        String thumbSuffix = version >= 3 ? Encryption.SUFFIX_GENERIC_THUMB : (version < 2 ? Encryption.PREFIX_THUMB : Encryption.SUFFIX_THUMB);
+        String noteSuffix = version >= 3 ? Encryption.SUFFIX_GENERIC_NOTE : (version < 2 ? Encryption.PREFIX_NOTE_FILE : Encryption.SUFFIX_NOTE_FILE);
+        
+        String fileName = version >= 3 ? (generatedName + fileSuffix) : (version < 2 ? sourceFile.getFileType().suffixPrefix + generatedName : generatedName + sourceFile.getFileType().suffixPrefix);
+        DocumentFile file = directory.createFile("", fileName);
+        DocumentFile thumbFile = sourceFile.getThumbUri() == null ? null : directory.createFile("", version >= 3 ? (generatedName + "_1" + thumbSuffix) : (version < 2 ? thumbSuffix + generatedName : generatedName + thumbSuffix));
+        DocumentFile noteFile = sourceFile.getNoteUri() == null ? null : directory.createFile("", version >= 3 ? (generatedName + "_2" + noteSuffix) : (version < 2 ? noteSuffix + generatedName : generatedName + noteSuffix));
 
         if (file == null) {
             Log.e(TAG, "copyTo: could not create file from " + sourceFile.getUri());
@@ -295,9 +323,15 @@ public class FileStuff {
         }
         String nameWithoutPrefix = getNameWithoutPrefix(sourceFile.getEncryptedName());
         int version = sourceFile.getVersion();
-        DocumentFile file = directory.createFile("", version < 2 ? sourceFile.getFileType().suffixPrefix + nameWithoutPrefix : nameWithoutPrefix + sourceFile.getFileType().suffixPrefix);
-        DocumentFile thumbFile = sourceFile.getThumbUri() == null ? null : directory.createFile("", version < 2 ? Encryption.PREFIX_THUMB + nameWithoutPrefix : nameWithoutPrefix + Encryption.SUFFIX_THUMB);
-        DocumentFile noteFile = sourceFile.getNoteUri() == null ? null : directory.createFile("", version < 2 ? Encryption.PREFIX_NOTE_FILE + nameWithoutPrefix : nameWithoutPrefix + Encryption.SUFFIX_NOTE_FILE);
+        
+        String fileSuffix = version >= 3 ? Encryption.SUFFIX_GENERIC_FILE : (version < 2 ? sourceFile.getFileType().suffixPrefix : sourceFile.getFileType().suffixPrefix);
+        String thumbSuffix = version >= 3 ? Encryption.SUFFIX_GENERIC_THUMB : (version < 2 ? Encryption.PREFIX_THUMB : Encryption.SUFFIX_THUMB);
+        String noteSuffix = version >= 3 ? Encryption.SUFFIX_GENERIC_NOTE : (version < 2 ? Encryption.PREFIX_NOTE_FILE : Encryption.SUFFIX_NOTE_FILE);
+        
+        String fileName = version >= 3 ? (nameWithoutPrefix + fileSuffix) : (version < 2 ? sourceFile.getFileType().suffixPrefix + nameWithoutPrefix : nameWithoutPrefix + sourceFile.getFileType().suffixPrefix);
+        DocumentFile file = directory.createFile("", fileName);
+        DocumentFile thumbFile = sourceFile.getThumbUri() == null ? null : directory.createFile("", version >= 3 ? (nameWithoutPrefix + "_1" + thumbSuffix) : (version < 2 ? thumbSuffix + nameWithoutPrefix : nameWithoutPrefix + thumbSuffix));
+        DocumentFile noteFile = sourceFile.getNoteUri() == null ? null : directory.createFile("", version >= 3 ? (nameWithoutPrefix + "_2" + noteSuffix) : (version < 2 ? noteSuffix + nameWithoutPrefix : nameWithoutPrefix + noteSuffix));
 
         if (file == null) {
             Log.e(TAG, "moveTo: could not create file from " + sourceFile.getUri());

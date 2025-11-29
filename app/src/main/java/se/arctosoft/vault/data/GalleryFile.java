@@ -52,6 +52,7 @@ public class GalleryFile implements Comparable<GalleryFile> {
     private final boolean isDirectory, isAllFolder;
     private final long lastModified, size;
     private final int version;
+    private Encryption.ContentType contentType;
     private Uri fileUri;
     private Uri thumbUri, noteUri, decryptedCacheUri;
     private String originalName, nameWithPath, note, text;
@@ -70,6 +71,7 @@ public class GalleryFile implements Comparable<GalleryFile> {
         this.version = fileType.version;
         this.size = -1;
         this.isAllFolder = true;
+        this.contentType = Encryption.ContentType.FILE;
         this.orientation = -1;
     }
 
@@ -86,6 +88,7 @@ public class GalleryFile implements Comparable<GalleryFile> {
         this.version = fileType.version;
         this.size = text.getBytes(StandardCharsets.UTF_8).length;
         this.isAllFolder = false;
+        this.contentType = Encryption.ContentType.FILE;
         this.text = text;
         this.orientation = -1;
     }
@@ -102,6 +105,7 @@ public class GalleryFile implements Comparable<GalleryFile> {
         this.version = fileType.version;
         this.size = file.getSize();
         this.isAllFolder = false;
+        this.contentType = Encryption.ContentType.FILE;
         this.name = FileStuff.getNameWithoutPrefix(encryptedName);
         this.orientation = -1;
     }
@@ -119,6 +123,7 @@ public class GalleryFile implements Comparable<GalleryFile> {
         this.version = fileType.version;
         this.size = 0;
         this.isAllFolder = false;
+        this.contentType = Encryption.ContentType.FILE;
         this.orientation = -1;
     }
 
@@ -135,6 +140,7 @@ public class GalleryFile implements Comparable<GalleryFile> {
         this.version = fileType.version;
         this.size = 0;
         this.isAllFolder = false;
+        this.contentType = Encryption.ContentType.FILE;
         this.orientation = -1;
     }
 
@@ -177,6 +183,14 @@ public class GalleryFile implements Comparable<GalleryFile> {
 
     public int getVersion() {
         return version;
+    }
+
+    public Encryption.ContentType getContentType() {
+        return contentType;
+    }
+
+    public void setContentType(Encryption.ContentType contentType) {
+        this.contentType = contentType;
     }
 
     public void setOrientation(int orientation) {

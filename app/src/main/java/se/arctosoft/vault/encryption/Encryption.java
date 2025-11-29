@@ -98,7 +98,12 @@ public class Encryption {
     private static final int INTEGER_LENGTH = 4;
     public static final int DIR_HASH_LENGTH = 8;
     private static final String JSON_ORIGINAL_NAME = "originalName";
+    private static final String JSON_FILE_TYPE = "fileType";
+    private static final String JSON_CONTENT_TYPE = "contentType";
     public static final String BIOMETRICS_ALIAS = "vault_key";
+
+    // Encryption versions
+    public static final int ENCRYPTION_VERSION_3 = 3;
 
     public static final String ENCRYPTED_PREFIX = ".valv.";
     public static final String PREFIX_IMAGE_FILE = ".valv.i.1-";
@@ -116,6 +121,35 @@ public class Encryption {
     public static final String SUFFIX_NOTE_FILE = "-n.valv";
     public static final String SUFFIX_THUMB = "-t.valv";
 
+    // Version 3: Generic suffix (no type indicator)
+    public static final String SUFFIX_GENERIC_FILE = ".valv";
+    public static final String SUFFIX_GENERIC_THUMB = ".valv";
+    public static final String SUFFIX_GENERIC_NOTE = ".valv";
+
+    // Content type enum for V3 files
+    public enum ContentType {
+        FILE(0),
+        THUMBNAIL(1),
+        NOTE(2);
+
+        public final int value;
+
+        ContentType(int value) {
+            this.value = value;
+        }
+
+        public static ContentType fromValue(int value) {
+            switch (value) {
+                case 1:
+                    return THUMBNAIL;
+                case 2:
+                    return NOTE;
+                default:
+                    return FILE;
+            }
+        }
+    }
+
     public static String getSuffixFromMime(@Nullable String mimeType) {
         if (mimeType == null) {
             return Encryption.SUFFIX_IMAGE_FILE;
@@ -130,21 +164,47 @@ public class Encryption {
         }
     }
 
+    public static int getFileTypeFromMime(@Nullable String mimeType) {
+        if (mimeType == null) {
+            return FileType.TYPE_IMAGE;
+        } else if (mimeType.equals("image/gif")) {
+            return FileType.TYPE_GIF;
+        } else if (mimeType.startsWith("image/")) {
+            return FileType.TYPE_IMAGE;
+        } else if (mimeType.startsWith("text/")) {
+            return FileType.TYPE_TEXT;
+        } else {
+            return FileType.TYPE_VIDEO;
+        }
+    }
+
     public static Pair<Boolean, Boolean> importFileToDirectory(FragmentActivity context, DocumentFile sourceFile, DocumentFile directory, char[] password, int version, @Nullable IOnProgress onProgress, AtomicBoolean interrupted) {
+        int fileType = getFileTypeFromMime(sourceFile.getType());
+        return importFileToDirectory(context, sourceFile, directory, password, version, fileType, onProgress, interrupted);
+    }
+
+    public static Pair<Boolean, Boolean> importFileToDirectory(FragmentActivity context, DocumentFile sourceFile, DocumentFile directory, char[] password, int version, int fileType, @Nullable IOnProgress onProgress, AtomicBoolean interrupted) {
         if (password == null || password.length == 0) {
             throw new RuntimeException("No password");
         }
 
         String generatedName = StringStuff.getRandomFileName();
-        DocumentFile file = directory.createFile("", generatedName + getSuffixFromMime(sourceFile.getType()));
-        DocumentFile thumb = directory.createFile("", generatedName + SUFFIX_THUMB);
+        String suffix = version >= ENCRYPTION_VERSION_3 ? SUFFIX_GENERIC_FILE : getSuffixFromMime(sourceFile.getType());
+        String thumbSuffix = version >= ENCRYPTION_VERSION_3 ? SUFFIX_GENERIC_THUMB : SUFFIX_THUMB;
+        
+        // For V3, append numeric identifiers to distinguish file/thumb/note since all use .valv
+        String fileName = generatedName + suffix;
+        String thumbFileName = version >= ENCRYPTION_VERSION_3 ? generatedName + "_1" + thumbSuffix : generatedName + thumbSuffix;
+        
+        DocumentFile file = directory.createFile("", fileName);
+        DocumentFile thumb = directory.createFile("", thumbFileName);
 
         if (file == null) {
             Log.e(TAG, "importFileToDirectory: could not create file from " + sourceFile.getUri());
             return new Pair<>(false, false);
         }
         try {
-            createFile(context, sourceFile.getUri(), file, password, sourceFile.getName(), onProgress, version, interrupted);
+            createFile(context, sourceFile.getUri(), file, password, sourceFile.getName(), onProgress, version, fileType, interrupted);
         } catch (GeneralSecurityException | IOException | JSONException e) {
             e.printStackTrace();
             file.delete();
@@ -159,7 +219,7 @@ public class Encryption {
         }
         boolean createdThumb = false;
         try {
-            createThumb(context, sourceFile.getUri(), thumb, password, sourceFile.getName(), version);
+            createThumb(context, sourceFile.getUri(), thumb, password, sourceFile.getName(), version, fileType);
             createdThumb = true;
         } catch (GeneralSecurityException | IOException | ExecutionException |
                  InterruptedException | JSONException e) {
@@ -170,14 +230,20 @@ public class Encryption {
     }
 
     public static DocumentFile importNoteToDirectory(FragmentActivity context, String note, String fileNameWithoutPrefix, DocumentFile directory, char[] password, int version) {
+        return importNoteToDirectory(context, note, fileNameWithoutPrefix, directory, password, version, FileType.TYPE_TEXT);
+    }
+
+    public static DocumentFile importNoteToDirectory(FragmentActivity context, String note, String fileNameWithoutPrefix, DocumentFile directory, char[] password, int version, int fileType) {
         if (password == null || password.length == 0) {
             throw new RuntimeException("No password");
         }
 
-        DocumentFile file = directory.createFile("", version < 2 ? Encryption.PREFIX_NOTE_FILE + fileNameWithoutPrefix : fileNameWithoutPrefix + Encryption.SUFFIX_NOTE_FILE);
+        String suffix = version >= ENCRYPTION_VERSION_3 ? SUFFIX_GENERIC_NOTE : (version < 2 ? PREFIX_NOTE_FILE : SUFFIX_NOTE_FILE);
+        String fileName = version >= ENCRYPTION_VERSION_3 ? (fileNameWithoutPrefix + "_2" + suffix) : (version < 2 ? PREFIX_NOTE_FILE + fileNameWithoutPrefix : fileNameWithoutPrefix + suffix);
+        DocumentFile file = directory.createFile("", fileName);
 
         try {
-            createTextFile(context, note, file, password, fileNameWithoutPrefix, version);
+            createTextFile(context, note, file, password, fileNameWithoutPrefix, version, fileType, ContentType.NOTE);
         } catch (GeneralSecurityException | IOException | JSONException e) {
             Log.e(TAG, "importNoteToDirectory: failed " + e.getMessage());
             e.printStackTrace();
@@ -189,6 +255,10 @@ public class Encryption {
     }
 
     public static DocumentFile importTextToDirectory(FragmentActivity context, String text, @Nullable String fileNameWithoutSuffix, DocumentFile directory, char[] password, int version) {
+        return importTextToDirectory(context, text, fileNameWithoutSuffix, directory, password, version, FileType.TYPE_TEXT);
+    }
+
+    public static DocumentFile importTextToDirectory(FragmentActivity context, String text, @Nullable String fileNameWithoutSuffix, DocumentFile directory, char[] password, int version, int fileType) {
         if (password == null || password.length == 0) {
             throw new RuntimeException("No password");
         }
@@ -196,10 +266,13 @@ public class Encryption {
         if (fileNameWithoutSuffix == null) {
             fileNameWithoutSuffix = StringStuff.getRandomFileName();
         }
-        DocumentFile file = directory.createFile("", version < 2 ? Encryption.PREFIX_TEXT_FILE + fileNameWithoutSuffix : fileNameWithoutSuffix + Encryption.SUFFIX_TEXT_FILE);
+        String suffix = version >= ENCRYPTION_VERSION_3 ? SUFFIX_GENERIC_FILE : (version < 2 ? PREFIX_TEXT_FILE : SUFFIX_TEXT_FILE);
+        String fileName = version >= ENCRYPTION_VERSION_3 ? (fileNameWithoutSuffix + suffix) : (version < 2 ? PREFIX_TEXT_FILE + fileNameWithoutSuffix : fileNameWithoutSuffix + suffix);
+        DocumentFile file = directory.createFile("", fileName);
 
         try {
-            createTextFile(context, text, file, password, version < 2 ? fileNameWithoutSuffix + FileType.TEXT_V1.extension : fileNameWithoutSuffix + FileType.TEXT_V2.extension, version);
+            String sourceFileName = version < 2 ? fileNameWithoutSuffix + FileType.TEXT_V1.extension : (version == 2 ? fileNameWithoutSuffix + FileType.TEXT_V2.extension : fileNameWithoutSuffix + FileType.TEXT_V3.extension);
+            createTextFile(context, text, file, password, sourceFileName, version, fileType);
         } catch (GeneralSecurityException | IOException | JSONException e) {
             Log.e(TAG, "importTextToDirectory: failed " + e.getMessage());
             e.printStackTrace();
@@ -215,6 +288,8 @@ public class Encryption {
         private final CipherOutputStream outputStream;
         private final SecretKey secretKey;
         private final String originalFileName, inputString;
+        private final int fileType;
+        private final ContentType contentType;
 
         private Streams(@NonNull InputStream inputStream, @NonNull CipherOutputStream outputStream, @NonNull SecretKey secretKey) {
             this.inputStream = inputStream;
@@ -222,6 +297,8 @@ public class Encryption {
             this.secretKey = secretKey;
             this.originalFileName = "";
             this.inputString = null;
+            this.fileType = -1;
+            this.contentType = ContentType.FILE;
         }
 
         private Streams(@NonNull String inputString, @NonNull CipherOutputStream outputStream, @NonNull SecretKey secretKey) {
@@ -230,6 +307,8 @@ public class Encryption {
             this.outputStream = outputStream;
             this.secretKey = secretKey;
             this.originalFileName = "";
+            this.fileType = -1;
+            this.contentType = ContentType.FILE;
         }
 
         private Streams(@NonNull InputStream inputStream, @NonNull SecretKey secretKey, @NonNull String originalFileName) {
@@ -238,6 +317,28 @@ public class Encryption {
             this.secretKey = secretKey;
             this.originalFileName = originalFileName;
             this.inputString = null;
+            this.fileType = -1;
+            this.contentType = ContentType.FILE;
+        }
+
+        private Streams(@NonNull InputStream inputStream, @NonNull SecretKey secretKey, @NonNull String originalFileName, int fileType) {
+            this.inputStream = inputStream;
+            this.outputStream = null;
+            this.secretKey = secretKey;
+            this.originalFileName = originalFileName;
+            this.inputString = null;
+            this.fileType = fileType;
+            this.contentType = ContentType.FILE;
+        }
+
+        private Streams(@NonNull InputStream inputStream, @NonNull SecretKey secretKey, @NonNull String originalFileName, int fileType, ContentType contentType) {
+            this.inputStream = inputStream;
+            this.outputStream = null;
+            this.secretKey = secretKey;
+            this.originalFileName = originalFileName;
+            this.inputString = null;
+            this.fileType = fileType;
+            this.contentType = contentType;
         }
 
         public String getInputString() {
@@ -252,6 +353,14 @@ public class Encryption {
         @NonNull
         public String getOriginalFileName() {
             return originalFileName;
+        }
+
+        public int getFileType() {
+            return fileType;
+        }
+
+        public ContentType getContentType() {
+            return contentType;
         }
 
         public void close() {
@@ -278,7 +387,11 @@ public class Encryption {
     }
 
     private static void createFile(FragmentActivity context, Uri input, DocumentFile outputFile, char[] password, String sourceFileName, @Nullable IOnProgress onProgress, int version, AtomicBoolean interrupted) throws GeneralSecurityException, IOException, JSONException {
-        Streams streams = getCipherOutputStream(context, input, outputFile, password, sourceFileName, version);
+        createFile(context, input, outputFile, password, sourceFileName, onProgress, version, -1, interrupted);
+    }
+
+    private static void createFile(FragmentActivity context, Uri input, DocumentFile outputFile, char[] password, String sourceFileName, @Nullable IOnProgress onProgress, int version, int fileType, AtomicBoolean interrupted) throws GeneralSecurityException, IOException, JSONException {
+        Streams streams = getCipherOutputStream(context, input, outputFile, password, sourceFileName, version, fileType);
 
         int read;
         byte[] buffer = new byte[2048];
@@ -299,13 +412,29 @@ public class Encryption {
     }
 
     private static void createTextFile(FragmentActivity context, String input, DocumentFile outputFile, char[] password, String sourceFileName, int version) throws GeneralSecurityException, IOException, JSONException {
-        Streams streams = getTextCipherOutputStream(context, input, outputFile, password, sourceFileName, version);
+        createTextFile(context, input, outputFile, password, sourceFileName, version, -1, ContentType.FILE);
+    }
+
+    private static void createTextFile(FragmentActivity context, String input, DocumentFile outputFile, char[] password, String sourceFileName, int version, int fileType) throws GeneralSecurityException, IOException, JSONException {
+        createTextFile(context, input, outputFile, password, sourceFileName, version, fileType, ContentType.FILE);
+    }
+
+    private static void createTextFile(FragmentActivity context, String input, DocumentFile outputFile, char[] password, String sourceFileName, int version, int fileType, ContentType contentType) throws GeneralSecurityException, IOException, JSONException {
+        Streams streams = getTextCipherOutputStream(context, input, outputFile, password, sourceFileName, version, fileType, contentType);
         streams.outputStream.write(streams.inputString.getBytes(StandardCharsets.UTF_8));
         streams.close();
     }
 
     private static void createThumb(FragmentActivity context, Uri input, DocumentFile outputThumbFile, char[] password, String sourceFileName, int version) throws GeneralSecurityException, IOException, ExecutionException, InterruptedException, JSONException {
-        Streams streams = getCipherOutputStream(context, input, outputThumbFile, password, sourceFileName, version);
+        createThumb(context, input, outputThumbFile, password, sourceFileName, version, -1, ContentType.THUMBNAIL);
+    }
+
+    private static void createThumb(FragmentActivity context, Uri input, DocumentFile outputThumbFile, char[] password, String sourceFileName, int version, int fileType) throws GeneralSecurityException, IOException, ExecutionException, InterruptedException, JSONException {
+        createThumb(context, input, outputThumbFile, password, sourceFileName, version, fileType, ContentType.THUMBNAIL);
+    }
+
+    private static void createThumb(FragmentActivity context, Uri input, DocumentFile outputThumbFile, char[] password, String sourceFileName, int version, int fileType, ContentType contentType) throws GeneralSecurityException, IOException, ExecutionException, InterruptedException, JSONException {
+        Streams streams = getCipherOutputStream(context, input, outputThumbFile, password, sourceFileName, version, fileType, contentType);
 
         Bitmap bitmap = Glide.with(context).asBitmap().load(input).centerCrop().submit(512, 512).get();
 
@@ -376,7 +505,7 @@ public class Encryption {
             byte[] checkBytes2 = new byte[CHECK_LENGTH];
 
             //1. VERSION SALT IVBYTES ITERATIONCOUNT CHECKBYTES CHECKBYTES_ENC\n
-            //2. {originalName}\n
+            //2. {originalName, fileType, ...}\n
             //3. file data
             inputStream.read(versionBytes);
             inputStream.read(salt);
@@ -384,7 +513,7 @@ public class Encryption {
             inputStream.read(iterationCount);
             inputStream.read(checkBytes1);
 
-            //final int VERSION = fromByteArray(versionBytes); // not used until version 3
+            final int DETECTED_VERSION = fromByteArray(versionBytes);
             final int ITERATION_COUNT = fromByteArray(iterationCount);
 
             SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance(KEY_ALGORITHM);
@@ -406,8 +535,11 @@ public class Encryption {
             byte[] jsonBytes = readUntilNewline(cipherInputStream); // read line 2
             JSONObject json = new JSONObject(new String(jsonBytes, StandardCharsets.UTF_8));
             String originalName = json.has(JSON_ORIGINAL_NAME) ? json.getString(JSON_ORIGINAL_NAME) : "";
+            int fileType = json.has(JSON_FILE_TYPE) ? json.getInt(JSON_FILE_TYPE) : -1;
+            int contentTypeValue = json.has(JSON_CONTENT_TYPE) ? json.getInt(JSON_CONTENT_TYPE) : 0;
+            ContentType contentType = ContentType.fromValue(contentTypeValue);
 
-            return new Streams(cipherInputStream, secretKey, originalName); // pass on line 3
+            return new Streams(cipherInputStream, secretKey, originalName, fileType, contentType); // pass on line 3
         }
     }
 
@@ -429,6 +561,14 @@ public class Encryption {
     }
 
     private static Streams getCipherOutputStream(FragmentActivity context, Uri input, DocumentFile outputFile, char[] password, String sourceFileName, int version) throws GeneralSecurityException, IOException, JSONException {
+        return getCipherOutputStream(context, input, outputFile, password, sourceFileName, version, -1, ContentType.FILE);
+    }
+
+    private static Streams getCipherOutputStream(FragmentActivity context, Uri input, DocumentFile outputFile, char[] password, String sourceFileName, int version, int fileType) throws GeneralSecurityException, IOException, JSONException {
+        return getCipherOutputStream(context, input, outputFile, password, sourceFileName, version, fileType, ContentType.FILE);
+    }
+
+    private static Streams getCipherOutputStream(FragmentActivity context, Uri input, DocumentFile outputFile, char[] password, String sourceFileName, int version, int fileType, ContentType contentType) throws GeneralSecurityException, IOException, JSONException {
         if (version < 2) {
             SecureRandom sr = SecureRandom.getInstanceStrong();
             byte[] salt = new byte[SALT_LENGTH];
@@ -477,12 +617,26 @@ public class Encryption {
             cipherOutputStream.write(checkBytes);
             JSONObject json = new JSONObject();
             json.put(JSON_ORIGINAL_NAME, sourceFileName);
+            if (fileType >= 0 && version >= ENCRYPTION_VERSION_3) {
+                json.put(JSON_FILE_TYPE, fileType);
+            }
+            if (version >= ENCRYPTION_VERSION_3) {
+                json.put(JSON_CONTENT_TYPE, contentType.value);
+            }
             cipherOutputStream.write(("\n" + json + "\n").getBytes(StandardCharsets.UTF_8));
             return new Streams(inputStream, cipherOutputStream, secretKey);
         }
     }
 
     private static Streams getTextCipherOutputStream(FragmentActivity context, String input, DocumentFile outputFile, char[] password, String sourceFileName, int version) throws GeneralSecurityException, IOException, JSONException {
+        return getTextCipherOutputStream(context, input, outputFile, password, sourceFileName, version, -1, ContentType.FILE);
+    }
+
+    private static Streams getTextCipherOutputStream(FragmentActivity context, String input, DocumentFile outputFile, char[] password, String sourceFileName, int version, int fileType) throws GeneralSecurityException, IOException, JSONException {
+        return getTextCipherOutputStream(context, input, outputFile, password, sourceFileName, version, fileType, ContentType.FILE);
+    }
+
+    private static Streams getTextCipherOutputStream(FragmentActivity context, String input, DocumentFile outputFile, char[] password, String sourceFileName, int version, int fileType, ContentType contentType) throws GeneralSecurityException, IOException, JSONException {
         if (version < 2) {
             SecureRandom sr = SecureRandom.getInstanceStrong();
             byte[] salt = new byte[SALT_LENGTH];
@@ -529,6 +683,12 @@ public class Encryption {
             cipherOutputStream.write(checkBytes);
             JSONObject json = new JSONObject();
             json.put(JSON_ORIGINAL_NAME, sourceFileName);
+            if (fileType >= 0 && version >= ENCRYPTION_VERSION_3) {
+                json.put(JSON_FILE_TYPE, fileType);
+            }
+            if (version >= ENCRYPTION_VERSION_3) {
+                json.put(JSON_CONTENT_TYPE, contentType.value);
+            }
             cipherOutputStream.write(("\n" + json + "\n").getBytes(StandardCharsets.UTF_8));
             return new Streams(input, cipherOutputStream, secretKey);
         }

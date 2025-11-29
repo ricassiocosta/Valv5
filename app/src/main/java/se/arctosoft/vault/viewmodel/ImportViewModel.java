@@ -207,7 +207,7 @@ public class ImportViewModel extends ViewModel {
                 }
                 Pair<Boolean, Boolean> imported = new Pair<>(false, false);
                 try {
-                    imported = Encryption.importFileToDirectory(activity, file, destinationDirectory, password.getPassword(), 2, onProgress, interrupted);
+                    imported = Encryption.importFileToDirectory(activity, file, destinationDirectory, password.getPassword(), 3, onProgress, interrupted);
                 } catch (SecurityException e) {
                     e.printStackTrace();
                 }
@@ -237,7 +237,7 @@ public class ImportViewModel extends ViewModel {
                     break;
                 }
 
-                DocumentFile importedFile = Encryption.importTextToDirectory(activity, text.getText(), text.getName(), destinationDirectory, password.getPassword(), 2);
+                DocumentFile importedFile = Encryption.importTextToDirectory(activity, text.getText(), text.getName(), destinationDirectory, password.getPassword(), 3);
 
                 if (interrupted.get()) {
                     break;
