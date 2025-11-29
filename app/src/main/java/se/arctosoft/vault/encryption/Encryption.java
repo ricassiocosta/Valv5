@@ -135,6 +135,9 @@ public class Encryption {
     public static final String SUFFIX_GENERIC_THUMB = ".valv";
     public static final String SUFFIX_GENERIC_NOTE = ".valv";
 
+    // Version 5: No extension - just random hash filename (no link to app)
+    public static final String SUFFIX_V5 = "";  // No extension for V5
+
     // Content type enum for V3 files
     public enum ContentType {
         FILE(0),
@@ -683,8 +686,8 @@ public class Encryption {
             throw new RuntimeException("No password");
         }
 
-        // Generate random filename for V5
-        String fileName = StringStuff.getRandomFileName() + SUFFIX_GENERIC_FILE;
+        // Generate random filename for V5 (no extension - just the hash)
+        String fileName = StringStuff.getRandomFileName() + SUFFIX_V5;
         String tmpFileName = fileName + ".tmp";
 
         // Create temporary file first (atomic write pattern)

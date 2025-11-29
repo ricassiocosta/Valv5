@@ -50,10 +50,24 @@ public class CipherModelLoader implements ModelLoader<Uri, InputStream> {
     @Override
     public boolean handles(@NonNull Uri uri) {
         String lastSegment = uri.getLastPathSegment();
+        if (lastSegment == null) {
+            return false;
+        }
+        
+        String lowerSegment = lastSegment.toLowerCase();
+        
         if (version < 2) {
-            return lastSegment != null && lastSegment.toLowerCase().contains("/" + Encryption.ENCRYPTED_PREFIX);
+            return lowerSegment.contains("/" + Encryption.ENCRYPTED_PREFIX);
         } else {
-            return lastSegment != null && lastSegment.toLowerCase().endsWith(Encryption.ENCRYPTED_SUFFIX);
+            // V2-V4: ends with .valv
+            if (lowerSegment.endsWith(Encryption.ENCRYPTED_SUFFIX)) {
+                return true;
+            }
+            // V5: no extension, just a 32-char alphanumeric random name
+            if (!lastSegment.contains(".") && lastSegment.matches("[a-zA-Z0-9]{32}")) {
+                return true;
+            }
+            return false;
         }
     }
 

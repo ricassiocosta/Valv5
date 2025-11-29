@@ -28,22 +28,22 @@ public enum FileType {
     IMAGE_V2(1, ".jpg", Encryption.SUFFIX_IMAGE_FILE, 2),
     IMAGE_V3(1, ".jpg", Encryption.SUFFIX_GENERIC_FILE, 3),
     IMAGE_V4(1, ".jpg", Encryption.SUFFIX_GENERIC_FILE, 4),
-    IMAGE_V5(1, ".jpg", Encryption.SUFFIX_GENERIC_FILE, 5),
+    IMAGE_V5(1, ".jpg", Encryption.SUFFIX_V5, 5),  // V5: No extension
     GIF_V1(2, ".gif", Encryption.PREFIX_GIF_FILE, 1),
     GIF_V2(2, ".gif", Encryption.SUFFIX_GIF_FILE, 2),
     GIF_V3(2, ".gif", Encryption.SUFFIX_GENERIC_FILE, 3),
     GIF_V4(2, ".gif", Encryption.SUFFIX_GENERIC_FILE, 4),
-    GIF_V5(2, ".gif", Encryption.SUFFIX_GENERIC_FILE, 5),
+    GIF_V5(2, ".gif", Encryption.SUFFIX_V5, 5),  // V5: No extension
     VIDEO_V1(3, ".mp4", Encryption.PREFIX_VIDEO_FILE, 1),
     VIDEO_V2(3, ".mp4", Encryption.SUFFIX_VIDEO_FILE, 2),
     VIDEO_V3(3, ".mp4", Encryption.SUFFIX_GENERIC_FILE, 3),
     VIDEO_V4(3, ".mp4", Encryption.SUFFIX_GENERIC_FILE, 4),
-    VIDEO_V5(3, ".mp4", Encryption.SUFFIX_GENERIC_FILE, 5),
+    VIDEO_V5(3, ".mp4", Encryption.SUFFIX_V5, 5),  // V5: No extension
     TEXT_V1(4, ".txt", Encryption.PREFIX_TEXT_FILE, 1),
     TEXT_V2(4, ".txt", Encryption.SUFFIX_TEXT_FILE, 2),
     TEXT_V3(4, ".txt", Encryption.SUFFIX_GENERIC_FILE, 3),
     TEXT_V4(4, ".txt", Encryption.SUFFIX_GENERIC_FILE, 4),
-    TEXT_V5(4, ".txt", Encryption.SUFFIX_GENERIC_FILE, 5);
+    TEXT_V5(4, ".txt", Encryption.SUFFIX_V5, 5);  // V5: No extension
 
     public static final int TYPE_DIRECTORY = 0;
     public static final int TYPE_IMAGE = 1;
@@ -82,6 +82,10 @@ public enum FileType {
             // V3 files - all use .valv suffix, type must be determined from encrypted metadata
             // For now, return IMAGE_V3 as default (will be corrected when reading metadata)
             return IMAGE_V3;
+        } else if (!name.contains(".") && name.matches("[a-zA-Z0-9]{32}")) {
+            // V5 files - no extension, just 32-char alphanumeric random name
+            // Type must be determined from encrypted metadata
+            return IMAGE_V5;
         } else {
             return DIRECTORY;
         }

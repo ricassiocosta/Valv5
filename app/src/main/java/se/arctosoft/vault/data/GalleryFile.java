@@ -348,7 +348,7 @@ public class GalleryFile implements Comparable<GalleryFile> {
     /**
      * Check if this file might be a V5 composite file (thumbnail embedded).
      * Returns true if:
-     * - The file uses .valv generic suffix (V3+)
+     * - The file uses .valv generic suffix (V3+) OR has no extension (V5)
      * - No separate thumbnail URI was found
      * - This is not a text file
      * 
@@ -356,14 +356,20 @@ public class GalleryFile implements Comparable<GalleryFile> {
      * we cannot determine the version from the filename alone.
      */
     public boolean mayBeV5CompositeFile() {
-        // Must be a .valv file (V3+), not a text file, and no separate thumb found
-        return encryptedName != null 
-                && encryptedName.endsWith(Encryption.SUFFIX_GENERIC_FILE)
-                && !encryptedName.endsWith(".t" + Encryption.SUFFIX_GENERIC_FILE)  // Not a V4 thumb file
-                && !encryptedName.endsWith(".n" + Encryption.SUFFIX_GENERIC_FILE)  // Not a V4 note file
-                && thumbUri == null  // No separate thumbnail found
-                && !isText()         // Text files don't have thumbnails
-                && !isDirectory;
+        if (encryptedName == null || isDirectory || isText() || thumbUri != null) {
+            return false;
+        }
+        
+        // V3+ style .valv files (not thumbnails or notes)
+        boolean isValvFile = encryptedName.endsWith(Encryption.SUFFIX_GENERIC_FILE)
+                && !encryptedName.endsWith(".t" + Encryption.SUFFIX_GENERIC_FILE)
+                && !encryptedName.endsWith(".n" + Encryption.SUFFIX_GENERIC_FILE);
+        
+        // V5 files have no extension - just an alphanumeric random name (32 chars)
+        boolean isV5NoExtension = !encryptedName.contains(".") 
+                && encryptedName.matches("[a-zA-Z0-9]{32}");
+        
+        return isValvFile || isV5NoExtension;
     }
 
     /**

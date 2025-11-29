@@ -98,9 +98,17 @@ public class FileStuff {
         
         for (CursorFile file : files) {
             String name = file.getName();
-            if (!name.startsWith(Encryption.ENCRYPTED_PREFIX) && !name.endsWith(Encryption.ENCRYPTED_SUFFIX) && !file.isDirectory()) {
+            
+            // Skip directories - they'll be handled separately
+            if (file.isDirectory()) {
+                documentFiles.add(file);
                 continue;
             }
+            
+            // V5 files have no extension - just 32-char alphanumeric random name
+            boolean isV1V2Encrypted = name.startsWith(Encryption.ENCRYPTED_PREFIX) || name.endsWith(Encryption.ENCRYPTED_SUFFIX);
+            boolean isV3V4Encrypted = name.endsWith(Encryption.SUFFIX_GENERIC_FILE) && !name.startsWith(Encryption.ENCRYPTED_PREFIX);
+            boolean isV5File = !name.contains(".") && name.matches("[a-zA-Z0-9]{32}");
 
             // Check V1/V2 suffixes FIRST before checking V3/V4 patterns
             if (name.endsWith(Encryption.SUFFIX_THUMB) || name.startsWith(Encryption.PREFIX_THUMB)) {
@@ -109,7 +117,7 @@ public class FileStuff {
             } else if (name.endsWith(Encryption.SUFFIX_NOTE_FILE) || name.startsWith(Encryption.PREFIX_NOTE_FILE)) {
                 // V1/V2 notes
                 documentNote.add(file);
-            } else if (name.endsWith(Encryption.SUFFIX_GENERIC_FILE) && !name.startsWith(Encryption.ENCRYPTED_PREFIX)) {
+            } else if (isV3V4Encrypted) {
                 // V3/V4 file - check if it's a thumbnail or note based on pattern
                 if (name.endsWith(".t" + Encryption.SUFFIX_GENERIC_FILE)) {
                     // V4: Thumbnail with .t.valv suffix
@@ -127,9 +135,14 @@ public class FileStuff {
                     // Plain main file (V3/V4)
                     documentFiles.add(file);
                 }
-            } else {
+            } else if (isV1V2Encrypted) {
+                // V1/V2 main file
+                documentFiles.add(file);
+            } else if (isV5File) {
+                // V5 file (32-char alphanumeric, no extension) - composite file with embedded thumbnail/note
                 documentFiles.add(file);
             }
+            // Else: unknown file type, skip it
         }
 
         // Process files and find their thumbnails/notes
@@ -204,9 +217,14 @@ public class FileStuff {
     }
 
     public static String getNameWithoutPrefix(@NonNull String encryptedName) {
-        // V3 pattern: basename[_1|_2].valv where _1 is thumbnail, _2 is note
+        // V5 pattern: 32-char alphanumeric with no extension - return as-is
+        if (!encryptedName.contains(".") && encryptedName.matches("[a-zA-Z0-9]{32}")) {
+            return encryptedName;
+        }
+        
+        // V3/V4 pattern: basename[_1|_2].valv where _1 is thumbnail, _2 is note
         if (encryptedName.endsWith(Encryption.SUFFIX_GENERIC_FILE)) {
-            // V3 file
+            // V3/V4 file
             String baseName = encryptedName.substring(0, encryptedName.lastIndexOf(Encryption.SUFFIX_GENERIC_FILE));
             // Remove _1 (thumbnail) or _2 (note) suffix if present
             if (baseName.endsWith("_1") || baseName.endsWith("_2")) {
@@ -216,7 +234,12 @@ public class FileStuff {
         } else if (encryptedName.startsWith(Encryption.ENCRYPTED_PREFIX)) {
             return encryptedName.substring(encryptedName.indexOf("-") + 1);
         } else {
-            return encryptedName.substring(0, encryptedName.lastIndexOf("-"));
+            int lastDash = encryptedName.lastIndexOf("-");
+            if (lastDash > 0) {
+                return encryptedName.substring(0, lastDash);
+            }
+            // No dash found, return original name
+            return encryptedName;
         }
     }
 
