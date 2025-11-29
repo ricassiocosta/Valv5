@@ -62,6 +62,7 @@ import org.json.JSONException;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.security.GeneralSecurityException;
 import java.util.HashMap;
@@ -419,6 +420,7 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
     }
 
     private void loadImage(GalleryFile galleryFile, GalleryPagerViewHolder.GalleryPagerImageViewHolder holder, FragmentActivity context) {
+        Log.d(TAG, "loadImage: " + galleryFile.getEncryptedName() + ", version=" + galleryFile.getVersion() + ", orientation=" + galleryFile.getOrientation());
         if (galleryFile.getOrientation() != -1) {
             holder.binding.imageView.setOrientation(galleryFile.getOrientation());
             holder.binding.imageView.setImage(ImageSource.uri(galleryFile.getUri(), password.getPassword(), galleryFile.getVersion()));
@@ -429,8 +431,14 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
                 try {
                     ContentResolver contentResolver = context.getContentResolver();
                     streams = Encryption.getCipherInputStream(contentResolver.openInputStream(galleryFile.getUri()), password.getPassword(), false, galleryFile.getVersion());
-                    ExifInterface exifInterface = new ExifInterface(streams.getInputStream());
-                    orientation = exifInterface.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+                    Log.d(TAG, "loadImage: streams created, compositeStreams=" + (streams.compositeStreams != null));
+                    InputStream is = streams.getInputStream();
+                    Log.d(TAG, "loadImage: inputStream=" + is);
+                    if (is != null) {
+                        ExifInterface exifInterface = new ExifInterface(is);
+                        orientation = exifInterface.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+                        Log.d(TAG, "loadImage: exif orientation=" + orientation);
+                    }
                     if (orientation == ExifInterface.ORIENTATION_UNDEFINED) {
                         orientation = -1;
                     } else {
@@ -438,6 +446,7 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
                     }
                 } catch (GeneralSecurityException | InvalidPasswordException | JSONException |
                          IOException e) {
+                    Log.e(TAG, "loadImage: error", e);
                     e.printStackTrace();
                     context.runOnUiThread(() -> {
                         int i = holder.getBindingAdapterPosition();
@@ -472,8 +481,9 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
     }
 
     private void loadGif(GalleryFile galleryFile, GalleryPagerViewHolder.GalleryPagerGifViewHolder holder, FragmentActivity context) {
+        Log.d("GalleryPagerAdapter", "loadGif: uri=" + galleryFile.getUri() + ", version=" + galleryFile.getVersion());
         Glide.with(context)
-                //.asGif()
+                .asGif()
                 .load(galleryFile.getUri())
                 .apply(GlideStuff.getRequestOptions(useDiskCache))
                 .into(holder.binding.gifImageView);
@@ -669,9 +679,13 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
     }
 
     private void saveNote(FragmentActivity context, GalleryFile galleryFile, String text) {
-        DocumentFile createdFile = Encryption.importNoteToDirectory(context, text, FileStuff.getNameWithoutPrefix(galleryFile.getEncryptedName()), currentDirectory, password.getPassword(), galleryFile.getVersion());
-        if (createdFile != null) {
-            galleryFile.setNoteUri(createdFile.getUri());
+        try {
+            DocumentFile createdFile = Encryption.importNoteToDirectory(context, text, FileStuff.getNameWithoutPrefix(galleryFile.getEncryptedName()), currentDirectory, password.getPassword(), galleryFile.getVersion());
+            if (createdFile != null) {
+                galleryFile.setNoteUri(createdFile.getUri());
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "saveNote: Failed to save note", e);
         }
     }
 

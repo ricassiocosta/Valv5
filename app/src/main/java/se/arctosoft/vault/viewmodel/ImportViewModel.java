@@ -29,6 +29,7 @@ import androidx.fragment.app.FragmentActivity;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 
+import java.io.IOException;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -208,7 +209,7 @@ public class ImportViewModel extends ViewModel {
                 Pair<Boolean, Boolean> imported = new Pair<>(false, false);
                 try {
                     imported = Encryption.importFileToDirectory(activity, file, destinationDirectory, password.getPassword(), Encryption.ENCRYPTION_VERSION_5, onProgress, interrupted);
-                } catch (SecurityException e) {
+                } catch (SecurityException | IOException e) {
                     e.printStackTrace();
                 }
                 if (interrupted.get()) {

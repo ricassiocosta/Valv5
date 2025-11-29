@@ -85,7 +85,7 @@ public class GalleryFile implements Comparable<GalleryFile> {
         this.decryptedCacheUri = null;
         this.lastModified = Long.MAX_VALUE;
         this.isDirectory = false;
-        this.fileType = FileType.TEXT_V2;
+          this.fileType = FileType.TEXT_V5;
         this.version = fileType.version;
         this.size = text.getBytes(StandardCharsets.UTF_8).length;
         this.isAllFolder = false;
@@ -102,8 +102,9 @@ public class GalleryFile implements Comparable<GalleryFile> {
         this.decryptedCacheUri = null;
         this.lastModified = file.getLastModified();
         this.isDirectory = false;
-        this.fileType = FileType.fromFilename(encryptedName);
-        this.version = fileType.version;
+        // V5 only: type is stored in encrypted metadata, not in filename
+        this.fileType = FileType.DIRECTORY;
+        this.version = Encryption.ENCRYPTION_VERSION_5;
         this.size = file.getSize();
         this.isAllFolder = false;
         this.contentType = Encryption.ContentType.FILE;
@@ -120,8 +121,9 @@ public class GalleryFile implements Comparable<GalleryFile> {
         this.decryptedCacheUri = null;
         this.lastModified = System.currentTimeMillis();
         this.isDirectory = true;
-        this.fileType = FileType.fromFilename(encryptedName);
-        this.version = fileType.version;
+        // V5 only: directories have no encrypted name
+        this.fileType = FileType.DIRECTORY;
+        this.version = Encryption.ENCRYPTION_VERSION_5;
         this.size = 0;
         this.isAllFolder = false;
         this.contentType = Encryption.ContentType.FILE;
@@ -169,7 +171,7 @@ public class GalleryFile implements Comparable<GalleryFile> {
     public void setOriginalName(String originalName) {
         this.originalName = originalName;
         if ((this.fileType.isImage() || this.fileType.isGif()) && originalName != null && originalName.toLowerCase().endsWith(".webp")) {
-            this.overriddenFileType = FileType.GIF_V2;
+              this.overriddenFileType = FileType.GIF_V5;
         }
     }
 
@@ -369,11 +371,7 @@ public class GalleryFile implements Comparable<GalleryFile> {
         }
         
         // V3+ style .valv files (not thumbnails or notes)
-        boolean isValvFile = encryptedName.endsWith(Encryption.SUFFIX_GENERIC_FILE)
-                && !encryptedName.endsWith(".t" + Encryption.SUFFIX_GENERIC_FILE)
-                && !encryptedName.endsWith(".n" + Encryption.SUFFIX_GENERIC_FILE);
-        
-        // V5 files have no extension - just an alphanumeric random name (32 chars)
+          boolean isValvFile = !encryptedName.contains(".") && encryptedName.matches("[a-zA-Z0-9]{32}");        // V5 files have no extension - just an alphanumeric random name (32 chars)
         boolean isV5NoExtension = !encryptedName.contains(".") 
                 && encryptedName.matches("[a-zA-Z0-9]{32}");
         

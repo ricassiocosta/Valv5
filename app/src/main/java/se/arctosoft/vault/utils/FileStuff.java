@@ -52,6 +52,8 @@ import se.arctosoft.vault.data.Password;
 import se.arctosoft.vault.encryption.Encryption;
 import se.arctosoft.vault.exception.InvalidPasswordException;
 
+import static se.arctosoft.vault.encryption.Encryption.SUFFIX_V5;
+
 public class FileStuff {
     private static final String TAG = "FileStuff";
 
@@ -105,40 +107,10 @@ public class FileStuff {
                 continue;
             }
             
-            // V5 files have no extension - just 32-char alphanumeric random name
-            boolean isV1V2Encrypted = name.startsWith(Encryption.ENCRYPTED_PREFIX) || name.endsWith(Encryption.ENCRYPTED_SUFFIX);
-            boolean isV3V4Encrypted = name.endsWith(Encryption.SUFFIX_GENERIC_FILE) && !name.startsWith(Encryption.ENCRYPTED_PREFIX);
+            // V5 only: files have no extension - just 32-char alphanumeric random name
             boolean isV5File = !name.contains(".") && name.matches("[a-zA-Z0-9]{32}");
 
-            // Check V1/V2 suffixes FIRST before checking V3/V4 patterns
-            if (name.endsWith(Encryption.SUFFIX_THUMB) || name.startsWith(Encryption.PREFIX_THUMB)) {
-                // V1/V2 thumbnails
-                documentThumbs.add(file);
-            } else if (name.endsWith(Encryption.SUFFIX_NOTE_FILE) || name.startsWith(Encryption.PREFIX_NOTE_FILE)) {
-                // V1/V2 notes
-                documentNote.add(file);
-            } else if (isV3V4Encrypted) {
-                // V3/V4 file - check if it's a thumbnail or note based on pattern
-                if (name.endsWith(".t" + Encryption.SUFFIX_GENERIC_FILE)) {
-                    // V4: Thumbnail with .t.valv suffix
-                    documentThumbs.add(file);
-                } else if (name.endsWith(".n" + Encryption.SUFFIX_GENERIC_FILE)) {
-                    // V4: Note with .n.valv suffix
-                    documentNote.add(file);
-                } else if (name.endsWith("_1" + Encryption.SUFFIX_GENERIC_FILE)) {
-                    // V3 Fase 1: Thumbnail with _1.valv suffix
-                    documentThumbs.add(file);
-                } else if (name.endsWith("_2" + Encryption.SUFFIX_GENERIC_FILE)) {
-                    // V3 Fase 1: Note with _2.valv suffix
-                    documentNote.add(file);
-                } else {
-                    // Plain main file (V3/V4)
-                    documentFiles.add(file);
-                }
-            } else if (isV1V2Encrypted) {
-                // V1/V2 main file
-                documentFiles.add(file);
-            } else if (isV5File) {
+            if (isV5File) {
                 // V5 file (32-char alphanumeric, no extension) - composite file with embedded thumbnail/note
                 documentFiles.add(file);
             }
@@ -222,25 +194,8 @@ public class FileStuff {
             return encryptedName;
         }
         
-        // V3/V4 pattern: basename[_1|_2].valv where _1 is thumbnail, _2 is note
-        if (encryptedName.endsWith(Encryption.SUFFIX_GENERIC_FILE)) {
-            // V3/V4 file
-            String baseName = encryptedName.substring(0, encryptedName.lastIndexOf(Encryption.SUFFIX_GENERIC_FILE));
-            // Remove _1 (thumbnail) or _2 (note) suffix if present
-            if (baseName.endsWith("_1") || baseName.endsWith("_2")) {
-                baseName = baseName.substring(0, baseName.length() - 2);
-            }
-            return baseName;
-        } else if (encryptedName.startsWith(Encryption.ENCRYPTED_PREFIX)) {
-            return encryptedName.substring(encryptedName.indexOf("-") + 1);
-        } else {
-            int lastDash = encryptedName.lastIndexOf("-");
-            if (lastDash > 0) {
-                return encryptedName.substring(0, lastDash);
-            }
-            // No dash found, return original name
-            return encryptedName;
-        }
+        // Unknown pattern - return as-is
+        return encryptedName;
     }
 
     @NonNull
@@ -327,7 +282,7 @@ public class FileStuff {
         return file.getFileType().extension;
     }
 
-    public static boolean copyTo(Context context, GalleryFile sourceFile, DocumentFile directory) {
+        public static boolean copyTo(Context context, GalleryFile sourceFile, DocumentFile directory) {
         if (sourceFile.getUri().getLastPathSegment().equals(directory.getUri().getLastPathSegment() + "/" + sourceFile.getEncryptedName())) {
             Log.e(TAG, "moveTo: can't copy " + sourceFile.getUri().getLastPathSegment() + " to the same folder");
             return false;
@@ -335,24 +290,14 @@ public class FileStuff {
         String generatedName = StringStuff.getRandomFileName();
         int version = sourceFile.getVersion();
         
-        String fileSuffix = version >= 3 ? Encryption.SUFFIX_GENERIC_FILE : (version < 2 ? sourceFile.getFileType().suffixPrefix : sourceFile.getFileType().suffixPrefix);
-        String thumbSuffix = version >= 3 ? Encryption.SUFFIX_GENERIC_THUMB : (version < 2 ? Encryption.PREFIX_THUMB : Encryption.SUFFIX_THUMB);
-        String noteSuffix = version >= 3 ? Encryption.SUFFIX_GENERIC_NOTE : (version < 2 ? Encryption.PREFIX_NOTE_FILE : Encryption.SUFFIX_NOTE_FILE);
+        String fileSuffix = Encryption.SUFFIX_V5;
         
-        String fileName = version >= 3 ? (generatedName + fileSuffix) : (version < 2 ? sourceFile.getFileType().suffixPrefix + generatedName : generatedName + sourceFile.getFileType().suffixPrefix);
+        String fileName = generatedName + fileSuffix;
         DocumentFile file = directory.createFile("", fileName);
-        DocumentFile thumbFile = sourceFile.getThumbUri() == null ? null : directory.createFile("", version >= 3 ? (generatedName + "_1" + thumbSuffix) : (version < 2 ? thumbSuffix + generatedName : generatedName + thumbSuffix));
-        DocumentFile noteFile = sourceFile.getNoteUri() == null ? null : directory.createFile("", version >= 3 ? (generatedName + "_2" + noteSuffix) : (version < 2 ? noteSuffix + generatedName : generatedName + noteSuffix));
-
+        
         if (file == null) {
             Log.e(TAG, "copyTo: could not create file from " + sourceFile.getUri());
             return false;
-        }
-        if (thumbFile != null) {
-            writeTo(context, sourceFile.getThumbUri(), thumbFile.getUri());
-        }
-        if (noteFile != null) {
-            writeTo(context, sourceFile.getNoteUri(), noteFile.getUri());
         }
         return writeTo(context, sourceFile.getUri(), file.getUri());
     }
@@ -365,24 +310,14 @@ public class FileStuff {
         String nameWithoutPrefix = getNameWithoutPrefix(sourceFile.getEncryptedName());
         int version = sourceFile.getVersion();
         
-        String fileSuffix = version >= 3 ? Encryption.SUFFIX_GENERIC_FILE : (version < 2 ? sourceFile.getFileType().suffixPrefix : sourceFile.getFileType().suffixPrefix);
-        String thumbSuffix = version >= 3 ? Encryption.SUFFIX_GENERIC_THUMB : (version < 2 ? Encryption.PREFIX_THUMB : Encryption.SUFFIX_THUMB);
-        String noteSuffix = version >= 3 ? Encryption.SUFFIX_GENERIC_NOTE : (version < 2 ? Encryption.PREFIX_NOTE_FILE : Encryption.SUFFIX_NOTE_FILE);
+        String fileSuffix = Encryption.SUFFIX_V5;
         
-        String fileName = version >= 3 ? (nameWithoutPrefix + fileSuffix) : (version < 2 ? sourceFile.getFileType().suffixPrefix + nameWithoutPrefix : nameWithoutPrefix + sourceFile.getFileType().suffixPrefix);
+        String fileName = nameWithoutPrefix + fileSuffix;
         DocumentFile file = directory.createFile("", fileName);
-        DocumentFile thumbFile = sourceFile.getThumbUri() == null ? null : directory.createFile("", version >= 3 ? (nameWithoutPrefix + "_1" + thumbSuffix) : (version < 2 ? thumbSuffix + nameWithoutPrefix : nameWithoutPrefix + thumbSuffix));
-        DocumentFile noteFile = sourceFile.getNoteUri() == null ? null : directory.createFile("", version >= 3 ? (nameWithoutPrefix + "_2" + noteSuffix) : (version < 2 ? noteSuffix + nameWithoutPrefix : nameWithoutPrefix + noteSuffix));
 
         if (file == null) {
             Log.e(TAG, "moveTo: could not create file from " + sourceFile.getUri());
             return false;
-        }
-        if (thumbFile != null) {
-            writeTo(context, sourceFile.getThumbUri(), thumbFile.getUri());
-        }
-        if (noteFile != null) {
-            writeTo(context, sourceFile.getNoteUri(), noteFile.getUri());
         }
         return writeTo(context, sourceFile.getUri(), file.getUri());
     }

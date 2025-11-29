@@ -37,8 +37,8 @@ public class MyAppGlideModule extends AppGlideModule {
 
     @Override
     public void registerComponents(@NonNull Context context, @NonNull Glide glide, @NonNull Registry registry) {
-        registry.prepend(Uri.class, InputStream.class, new CipherModelLoaderFactory(context, 1));
-        registry.prepend(Uri.class, InputStream.class, new CipherModelLoaderFactory(context, 2));
+        // Register V5 only
+        registry.prepend(Uri.class, InputStream.class, new CipherModelLoaderFactory(context, 5));
     }
 
     @Override

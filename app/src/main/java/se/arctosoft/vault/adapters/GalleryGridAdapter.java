@@ -190,13 +190,11 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             if (firstFile == null) {
                 Glide.with(context).clear(holder.binding.imageView);
             } else if (firstFile.getThumbUri() != null) {
-                // Traditional thumbnail file (V1-V4)
                 Glide.with(context)
                         .load(firstFile.getThumbUri())
                         .apply(GlideStuff.getRequestOptions(useDiskCache))
                         .into(holder.binding.imageView);
             } else if (firstFile.mayBeV5CompositeFile()) {
-                // V5 composite file - load thumbnail from inside the file
                 loadCompositeThumb(context, firstFile, holder);
             } else {
                 Glide.with(context).clear(holder.binding.imageView);
@@ -211,11 +209,8 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                 readText(context, galleryFile, holder);
             }
         } else {
-            //Log.e(TAG, "onBindViewHolder: load image, version " + galleryFile.getVersion() + ", " + galleryFile.getFileType().suffixPrefix);
             holder.binding.imageView.setVisibility(View.VISIBLE);
             
-            // For V5 files with composite thumbnail, load from cache
-            // Use mayBeV5CompositeFile() since we can't detect V5 from filename alone
             if (galleryFile.getThumbUri() == null && galleryFile.mayBeV5CompositeFile()) {
                 loadCompositeThumb(context, galleryFile, holder);
             } else if (galleryFile.getThumbUri() != null) {

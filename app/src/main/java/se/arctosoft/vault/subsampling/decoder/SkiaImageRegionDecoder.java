@@ -25,6 +25,7 @@ import android.graphics.BitmapRegionDecoder;
 import android.graphics.Point;
 import android.graphics.Rect;
 import android.net.Uri;
+import android.util.Log;
 
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
@@ -83,23 +84,34 @@ public class SkiaImageRegionDecoder implements ImageRegionDecoder {
         try {
             ContentResolver contentResolver = context.getContentResolver();
             streams = Encryption.getCipherInputStream(contentResolver.openInputStream(uri), password, false, version);
+            Log.d("SkiaImageRegionDecoder", "init: streams created, compositeStreams=" + (streams.compositeStreams != null));
             
             // For V5 (detected by compositeStreams presence), use getFileBytes() 
             // to get the complete file content.
             // BitmapRegionDecoder needs a seekable stream that stays open during decoding.
             InputStream decoderInput;
             if (streams.compositeStreams != null) {
+                Log.d("SkiaImageRegionDecoder", "init: V5 file detected, calling getFileBytes()");
                 byte[] fileBytes = streams.getFileBytes();
+                Log.d("SkiaImageRegionDecoder", "init: fileBytes=" + (fileBytes != null ? fileBytes.length + " bytes" : "null"));
                 if (fileBytes != null) {
                     decoderInput = new ByteArrayInputStream(fileBytes);
+                    Log.d("SkiaImageRegionDecoder", "init: created ByteArrayInputStream for " + fileBytes.length + " bytes");
                 } else {
+                    Log.e("SkiaImageRegionDecoder", "init: Failed to read V5 file bytes!");
                     throw new IOException("Failed to read V5 file bytes for region decoder");
                 }
             } else {
+                Log.d("SkiaImageRegionDecoder", "init: V1-V4 file, using getInputStream()");
                 decoderInput = streams.getInputStream();
             }
             
+            Log.d("SkiaImageRegionDecoder", "init: calling BitmapRegionDecoder.newInstance()");
             decoder = BitmapRegionDecoder.newInstance(decoderInput, false);
+            Log.d("SkiaImageRegionDecoder", "init: decoder created successfully, size=" + decoder.getWidth() + "x" + decoder.getHeight());
+        } catch (Exception e) {
+            Log.e("SkiaImageRegionDecoder", "init: Exception occurred", e);
+            throw e;
         } finally {
             if (streams != null) {
                 // Don't close streams here for V5, as the ByteArrayInputStream doesn't need it

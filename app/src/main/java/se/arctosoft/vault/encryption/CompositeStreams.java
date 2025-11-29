@@ -60,6 +60,7 @@ public class CompositeStreams {
     private boolean noteHeaderRead = false;
     private boolean noteContentConsumed = false;
 
+    private byte[] cachedFileContent = null;
     private byte[] cachedThumbnail = null;
     private byte[] cachedNote = null;
 
@@ -74,15 +75,51 @@ public class CompositeStreams {
     }
 
     /**
-     * Get a stream to read the FILE section (main content).
+     * Get a stream to read the FILE section (main content) with streaming (no full cache).
+     * For large files like videos, this reads on-demand without caching the entire file.
+     * 
+     * @return InputStream for file content
+     * @throws IOException If reading fails
+     */
+    @NonNull
+    public InputStream getFileSectionStreaming() throws IOException {
+        android.util.Log.d(TAG, "getFileSectionStreaming: called");
+        
+        if (fileInfo == null) {
+            // Read FILE section header
+            SectionReader.SectionInfo info = sectionReader.readNextSection();
+            android.util.Log.d(TAG, "getFileSectionStreaming: read section info=" + info);
+            if (info == null || !info.isFileSection()) {
+                throw new IOException("File section not found in composite file, got: " + info);
+            }
+            fileInfo = info;
+        }
+
+        // Return a LimitedInputStream that reads from encryptedIn with size limit
+        // This allows streaming without loading entire file into memory
+        android.util.Log.d(TAG, "getFileSectionStreaming: returning LimitedInputStream for " + fileInfo.size + " bytes");
+        fileContentConsumed = true;
+        return new LimitedInputStream(encryptedIn, fileInfo.size);
+    }
+
+    /**
+     * Get a stream to read the FILE section (main content) with full caching.
      * This is typically the first section in a V5 file.
+     * The content is cached on first read to allow multiple calls.
+     * Use this for small files or when multiple reads are needed.
      *
      * @return InputStream for file content
      * @throws IOException If reading fails
      */
     @NonNull
     public InputStream getFileSection() throws IOException {
-        android.util.Log.d(TAG, "getFileSection: called, fileInfo=" + fileInfo);
+        android.util.Log.d(TAG, "getFileSection: called, cachedFileContent=" + (cachedFileContent != null ? cachedFileContent.length + " bytes" : "null"));
+        
+        // Return cached content if available
+        if (cachedFileContent != null) {
+            return new ByteArrayInputStream(cachedFileContent);
+        }
+        
         if (fileInfo == null) {
             // Read FILE section header
             SectionReader.SectionInfo info = sectionReader.readNextSection();
@@ -93,8 +130,21 @@ public class CompositeStreams {
             fileInfo = info;
         }
 
-        // Return a wrapper that reads exactly fileInfo.size bytes
-        return new LimitedInputStream(encryptedIn, fileInfo.size, () -> fileContentConsumed = true);
+        // Read and cache the entire file content
+        android.util.Log.d(TAG, "getFileSection: reading " + fileInfo.size + " bytes into cache");
+        cachedFileContent = new byte[(int) fileInfo.size];
+        int totalRead = 0;
+        while (totalRead < fileInfo.size) {
+            int read = encryptedIn.read(cachedFileContent, totalRead, (int) (fileInfo.size - totalRead));
+            if (read == -1) {
+                throw new IOException("Unexpected end of stream while reading FILE section");
+            }
+            totalRead += read;
+        }
+        fileContentConsumed = true;
+        android.util.Log.d(TAG, "getFileSection: cached " + totalRead + " bytes");
+
+        return new ByteArrayInputStream(cachedFileContent);
     }
 
     /**

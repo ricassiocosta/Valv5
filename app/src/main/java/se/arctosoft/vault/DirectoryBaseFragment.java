@@ -88,12 +88,10 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     static final int ORDER_BY_SMALLEST = 3;
     static final int ORDER_BY_RANDOM = 4;
     static final int FILTER_ALL = 0;
-    static final int FILTER_IMAGES = FileType.IMAGE_V2.type;
-    static final int FILTER_GIFS = FileType.GIF_V2.type;
-    static final int FILTER_VIDEOS = FileType.VIDEO_V2.type;
-    static final int FILTER_TEXTS = FileType.TEXT_V2.type;
-
-    NavController navController;
+      static final int FILTER_IMAGES = FileType.IMAGE_V5.type;
+      static final int FILTER_GIFS = FileType.GIF_V5.type;
+      static final int FILTER_VIDEOS = FileType.VIDEO_V5.type;
+      static final int FILTER_TEXTS = FileType.TEXT_V5.type;    NavController navController;
     FragmentDirectoryBinding binding;
     PasswordViewModel passwordViewModel;
     GalleryViewModel galleryViewModel;

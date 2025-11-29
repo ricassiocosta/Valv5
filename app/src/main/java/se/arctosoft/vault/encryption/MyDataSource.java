@@ -46,6 +46,7 @@ public class MyDataSource implements DataSource {
     private final Context context;
 
     private Encryption.Streams streams;
+    private InputStream cachedInputStream;  // Cache the input stream for reuse
     private Uri uri;
     private final Password password;
     private final int version;
@@ -70,16 +71,18 @@ public class MyDataSource implements DataSource {
             return 0;
         }
 
-        InputStream inputStream = streams.getInputStream();
-        Log.d(TAG, "open: inputStream=" + inputStream);
-        if (inputStream == null) {
+        // Use streaming for V5 to avoid loading entire file into memory
+        // For V1-V4, uses the same input stream
+        cachedInputStream = streams.getInputStreamStreaming();
+        Log.d(TAG, "open: cachedInputStream=" + cachedInputStream);
+        if (cachedInputStream == null) {
             Log.e(TAG, "open: inputStream is null!");
             return 0;
         }
 
         if (dataSpec.position != 0) {
             Log.d(TAG, "open: skipping " + dataSpec.position + " bytes");
-            long skipped = forceSkip(dataSpec.position, inputStream);
+            long skipped = forceSkip(dataSpec.position, cachedInputStream);
             Log.d(TAG, "open: skipped " + skipped + " bytes");
         }
         return dataSpec.length;
@@ -104,12 +107,12 @@ public class MyDataSource implements DataSource {
             return 0;
         }
 
-        InputStream inputStream = streams.getInputStream();
-        if (inputStream == null) {
-            Log.e(TAG, "read: inputStream is null!");
+        // Use the cached input stream instead of calling getInputStream() each time
+        if (cachedInputStream == null) {
+            Log.e(TAG, "read: cachedInputStream is null!");
             return -1;
         }
-        int bytesRead = inputStream.read(buffer, offset, length);
+        int bytesRead = cachedInputStream.read(buffer, offset, length);
         Log.d(TAG, "read: requested=" + length + ", got=" + bytesRead);
         return bytesRead;
     }
