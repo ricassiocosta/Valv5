@@ -79,7 +79,7 @@ public class Settings {
     }
 
     public int getIterationCount() {
-        return getSharedPrefs().getInt(PREF_ENCRYPTION_ITERATION_COUNT, 50000);
+        return getSharedPrefs().getInt(PREF_ENCRYPTION_ITERATION_COUNT, 120000);
     }
 
     public void setIterationCount(int iterationCount) {
@@ -87,7 +87,7 @@ public class Settings {
     }
 
     public boolean useDiskCache() {
-        return getSharedPrefs().getBoolean(PREF_ENCRYPTION_USE_DISK_CACHE, true);
+        return getSharedPrefs().getBoolean(PREF_ENCRYPTION_USE_DISK_CACHE, false);
     }
 
     public void setUseDiskCache(boolean useDiskCache) {
