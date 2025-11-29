@@ -62,6 +62,8 @@ import se.arctosoft.vault.adapters.GalleryPagerAdapter;
 import se.arctosoft.vault.data.FileType;
 import se.arctosoft.vault.data.GalleryFile;
 import se.arctosoft.vault.data.Password;
+import se.arctosoft.vault.encryption.Encryption;
+import se.arctosoft.vault.exception.InvalidPasswordException;
 import se.arctosoft.vault.databinding.FragmentDirectoryBinding;
 import se.arctosoft.vault.utils.Dialogs;
 import se.arctosoft.vault.utils.FileStuff;
@@ -326,6 +328,33 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                 return;
             }
             List<GalleryFile> galleryFiles = FileStuff.getFilesInFolder(activity, directoryUri, true);
+
+            // New logic starts here
+            if (!galleryFiles.isEmpty()) {
+                GalleryFile fileToCheck = null;
+                for (GalleryFile f : galleryFiles) {
+                    if (!f.isDirectory()) {
+                        fileToCheck = f;
+                        break;
+                    }
+                }
+
+                if (fileToCheck != null) {
+                    try {
+                        char[] password = Password.getInstance().getPassword();
+                        // For v2 files, the isThumb parameter is not used.
+                        Encryption.checkPassword(activity, fileToCheck.getUri(), password, fileToCheck.getVersion(), false);
+                    } catch (InvalidPasswordException e) {
+                        // Silently filter out files, keep sub-directories
+                        galleryFiles.removeIf(galleryFile -> !galleryFile.isDirectory());
+                    } catch (Exception e) {
+                        // Log other errors, and treat as if password was wrong by clearing non-directories
+                        Log.e(TAG, "Error checking password for folder " + directoryUri, e);
+                        galleryFiles.removeIf(galleryFile -> !galleryFile.isDirectory());
+                    }
+                }
+            }
+            // New logic ends here
 
             activity.runOnUiThread(() -> {
                 setLoading(false);

@@ -32,6 +32,8 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import se.arctosoft.vault.encryption.Encryption;
+import se.arctosoft.vault.exception.InvalidPasswordException;
 import se.arctosoft.vault.interfaces.IOnDone;
 import se.arctosoft.vault.utils.FileStuff;
 
@@ -315,6 +317,47 @@ public class GalleryFile implements Comparable<GalleryFile> {
         }
         new Thread(() -> {
             List<GalleryFile> galleryFiles = FileStuff.getFilesInFolder(context, fileUri, false);
+            if (!galleryFiles.isEmpty()) {
+                GalleryFile fileToCheck = null;
+                for (GalleryFile f : galleryFiles) {
+                    if (!f.isDirectory()) {
+                        fileToCheck = f;
+                        break;
+                    }
+                }
+
+                if (fileToCheck != null) {
+                    try {
+                        char[] password = Password.getInstance().getPassword();
+                        // For v2 files, the isThumb parameter is not used. We pass false.
+                        if (fileToCheck.getThumbUri() != null) {
+                            Encryption.checkPassword(context, fileToCheck.getThumbUri(), password, fileToCheck.getVersion(), false);
+                        } else {
+                            Encryption.checkPassword(context, fileToCheck.getUri(), password, fileToCheck.getVersion(), false);
+                        }
+                    } catch (InvalidPasswordException e) {
+                        // Wrong password, so we show an empty folder
+                        this.fileCount = 0;
+                        this.firstFileInDirectoryWithThumb = null;
+                        findFilesInDirectoryStatus.set(FIND_FILES_DONE);
+                        if (onDone != null) {
+                            onDone.onDone();
+                        }
+                        return;
+                    } catch (Exception e) {
+                        // Other error, log it and proceed as if empty
+                        android.util.Log.e(TAG, "Error checking password for folder " + fileUri, e);
+                        this.fileCount = 0;
+                        this.firstFileInDirectoryWithThumb = null;
+                        findFilesInDirectoryStatus.set(FIND_FILES_DONE);
+                        if (onDone != null) {
+                            onDone.onDone();
+                        }
+                        return;
+                    }
+                }
+            }
+
             this.fileCount = 0;
             this.firstFileInDirectoryWithThumb = null;
             for (GalleryFile f : galleryFiles) {

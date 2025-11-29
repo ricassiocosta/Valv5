@@ -556,6 +556,28 @@ public class Encryption {
         return name;
     }
 
+    public static void checkPassword(@NonNull Context context, @NonNull Uri fileUri, @NonNull char[] password, int version, boolean isThumb) throws IOException, GeneralSecurityException, InvalidPasswordException, JSONException {
+        InputStream inputStream = null;
+        Streams streams = null;
+        try {
+            inputStream = context.getContentResolver().openInputStream(fileUri);
+            if (inputStream == null) {
+                throw new FileNotFoundException("Could not open " + fileUri);
+            }
+            streams = getCipherInputStream(inputStream, password, isThumb, version);
+        } finally {
+            if (streams != null) {
+                streams.close();
+            } else if (inputStream != null) {
+                try {
+                    inputStream.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
     private static void generateSecureRandom(SecureRandom sr, byte[] salt, byte[] ivBytes, @Nullable byte[] checkBytes) {
         sr.nextBytes(salt);
         sr.nextBytes(ivBytes);
