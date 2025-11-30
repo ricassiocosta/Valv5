@@ -290,18 +290,36 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
         }
         if (!galleryFile.isDirectory() && galleryFile.getOriginalName() == null) {
             new Thread(() -> {
+                Encryption.Streams streams = null;
                 try {
-                    String originalFilename = Encryption.getOriginalFilename(context.getContentResolver().openInputStream(galleryFile.getUri()), password.getPassword(), false, galleryFile.getVersion());
+                    InputStream inputStream = context.getContentResolver().openInputStream(galleryFile.getUri());
+                    streams = Encryption.getCipherInputStream(inputStream, password.getPassword(), false, galleryFile.getVersion());
+                    String originalFilename = streams.getOriginalFileName();
                     galleryFile.setOriginalName(originalFilename);
+
+                    if (originalFilename != null && originalFilename.toLowerCase().endsWith(".webp")) {
+                        InputStream decryptedStream = streams.getInputStream();
+                        if (decryptedStream != null) {
+                            // It's important to wrap the stream in a BufferedInputStream to support mark/reset
+                            InputStream bufferedDecryptedStream = new java.io.BufferedInputStream(decryptedStream);
+                            boolean isAnimated = Encryption.isAnimatedWebp(bufferedDecryptedStream);
+                            galleryFile.setFileTypeFromContent(isAnimated);
+                        }
+                    }
+
                     int pos = holder.getBindingAdapterPosition();
                     if (pos == position) {
                         context.runOnUiThread(() -> setName(holder, galleryFile));
                     } else if (pos >= 0 && pos < galleryFiles.size()) {
                         context.runOnUiThread(() -> notifyItemChanged(pos, new GalleryGridAdapter.Payload(GalleryGridAdapter.Payload.TYPE_NEW_FILENAME)));
                     }
-                } catch (FileNotFoundException e) {
+                } catch (Exception e) {
                     e.printStackTrace();
                     galleryFile.setOriginalName("");
+                } finally {
+                    if (streams != null) {
+                        streams.close();
+                    }
                 }
             }).start();
         }

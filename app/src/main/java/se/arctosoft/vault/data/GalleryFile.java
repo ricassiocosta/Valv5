@@ -231,6 +231,10 @@ public class GalleryFile implements Comparable<GalleryFile> {
         return getFileType().type == FileType.TYPE_GIF;
     }
 
+    public boolean isImage() {
+        return getFileType().type == FileType.TYPE_IMAGE;
+    }
+
     public boolean isText() {
         return getFileType().type == FileType.TYPE_TEXT;
     }

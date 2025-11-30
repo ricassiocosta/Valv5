@@ -147,18 +147,22 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
         updateSelectedView(holder, galleryFile);
         holder.binding.txtName.setVisibility(showFileNames || galleryFile.isDirectory() ? View.VISIBLE : View.GONE);
         holder.binding.imageView.setImageDrawable(null);
-        if (!isRootDir && (galleryFile.isGif() || galleryFile.isVideo() || galleryFile.isDirectory() || galleryFile.isText())) {
+        
+        boolean isWebpFile = galleryFile.getOriginalName() != null && galleryFile.getOriginalName().toLowerCase().endsWith(".webp");
+        if (!isRootDir && (galleryFile.isGif() || galleryFile.isVideo() || galleryFile.isDirectory() || galleryFile.isText() || (galleryFile.isImage() && isWebpFile))) {
             holder.binding.imgType.setVisibility(View.VISIBLE);
             int drawableId;
             if (galleryFile.isGif()) {
                 drawableId = R.drawable.ic_round_gif_24;
-                if (galleryFile.getOriginalName() != null && galleryFile.getOriginalName().toLowerCase().endsWith(".webp")) {
+                if (isWebpFile) {
                     drawableId = R.drawable.ic_round_webp_24;
                 }
             } else if (galleryFile.isVideo()) {
                 drawableId = R.drawable.ic_outline_video_file_24;
             } else if (galleryFile.isText()) {
                 drawableId = R.drawable.outline_text_snippet_24;
+            } else if (galleryFile.isImage() && isWebpFile) {
+                drawableId = R.drawable.ic_round_webp_24;
             } else {
                 drawableId = R.drawable.ic_round_folder_open_24;
             }
@@ -404,18 +408,21 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                     setItemFilename(holder, weakReference.get(), galleryFiles.get(holder.getBindingAdapterPosition()));
                     FragmentActivity context = weakReference.get();
                     GalleryFile galleryFile = galleryFiles.get(holder.getBindingAdapterPosition());
-                    if (!isRootDir && (galleryFile.isGif() || galleryFile.isVideo() || galleryFile.isDirectory() || galleryFile.isText())) {
+                    boolean isWebpFile = galleryFile.getOriginalName() != null && galleryFile.getOriginalName().toLowerCase().endsWith(".webp");
+                    if (!isRootDir && (galleryFile.isGif() || galleryFile.isVideo() || galleryFile.isDirectory() || galleryFile.isText() || (galleryFile.isImage() && isWebpFile))) {
                         holder.binding.imgType.setVisibility(View.VISIBLE);
                         int drawableId;
                         if (galleryFile.isGif()) {
                             drawableId = R.drawable.ic_round_gif_24;
-                            if (galleryFile.getOriginalName() != null && galleryFile.getOriginalName().toLowerCase().endsWith(".webp")) {
+                            if (isWebpFile) {
                                 drawableId = R.drawable.ic_round_webp_24;
                             }
                         } else if (galleryFile.isVideo()) {
                             drawableId = R.drawable.ic_outline_video_file_24;
                         } else if (galleryFile.isText()) {
                             drawableId = R.drawable.outline_text_snippet_24;
+                        } else if (galleryFile.isImage() && isWebpFile) {
+                            drawableId = R.drawable.ic_round_webp_24;
                         } else {
                             drawableId = R.drawable.ic_round_folder_open_24;
                         }
