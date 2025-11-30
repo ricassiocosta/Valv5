@@ -691,6 +691,9 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         if (galleryPagerAdapter != null) {
             galleryPagerAdapter.releasePlayers();
         }
+        if (galleryGridAdapter != null) {
+            galleryGridAdapter.shutdown();
+        }
         super.onDestroy();
     }
 

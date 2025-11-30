@@ -51,6 +51,13 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
+import android.util.LruCache;
 
 import ricassiocosta.me.valv5.DirectoryFragment;
 import ricassiocosta.me.valv5.R;
@@ -76,6 +83,17 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
 
     private static final Object LOCK = new Object();
     private static final SimpleDateFormat simpleDateFormat = new SimpleDateFormat("dd MMM yyyy HH:mm:ss", Locale.ENGLISH);
+    
+    // Thread pool for loading thumbnails - limited to prevent OOM
+    private static final int THUMBNAIL_LOADER_THREADS = 4;
+    private final ExecutorService thumbnailExecutor = Executors.newFixedThreadPool(THUMBNAIL_LOADER_THREADS);
+    
+    // Track pending thumbnail loads to cancel when ViewHolder is recycled
+    private final Map<Uri, Future<?>> pendingTasks = new ConcurrentHashMap<>();
+    
+    // LRU cache for metadata results - avoids re-reading encrypted files
+    private static final int METADATA_CACHE_SIZE = 100;
+    private final LruCache<Uri, Encryption.V5MetadataResult> metadataCache = new LruCache<>(METADATA_CACHE_SIZE);
 
     private final boolean isRootDir, useDiskCache;
     private boolean showFileNames, selectMode;
@@ -525,99 +543,159 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
      * Load thumbnail and metadata from V5 composite file.
      * For V5 files, the thumbnail is stored within the main encrypted file.
      * Also updates the file type from the encrypted metadata.
+     * Uses ExecutorService for better thread management and LruCache for caching.
      */
     private void loadCompositeThumb(FragmentActivity context, GalleryFile galleryFile, @NonNull GalleryGridViewHolder holder) {
-        new Thread(() -> {
+        Uri fileUri = galleryFile.getUri();
+        
+        // Set the current file URI on the holder for tracking
+        holder.setCurrentFileUri(fileUri);
+        
+        // Check metadata cache first - avoids re-reading encrypted file
+        Encryption.V5MetadataResult cachedMetadata = metadataCache.get(fileUri);
+        if (cachedMetadata != null) {
+            applyMetadata(context, galleryFile, holder, cachedMetadata, fileUri);
+            return;
+        }
+        
+        // Cancel any pending task for this URI
+        Future<?> existingTask = pendingTasks.get(fileUri);
+        if (existingTask != null && !existingTask.isDone()) {
+            existingTask.cancel(true);
+        }
+        
+        // Submit new task to executor
+        Future<?> task = thumbnailExecutor.submit(() -> {
+            // Check if this holder is still showing this file
+            if (!fileUri.equals(holder.getCurrentFileUri())) {
+                return;
+            }
+            
             try {
                 char[] pwd = Password.getInstance().getPassword();
                 
                 Encryption.V5MetadataResult metadata = Encryption.readCompositeMetadata(galleryFile.getUri(), context, pwd);
                 if (metadata != null) {
-                    // Update file type from metadata (critical for video/gif detection)
-                    final boolean[] typeChanged = {false};
-                    if (metadata.fileType >= 0) {
-                        FileType realType = FileType.fromTypeAndVersion(metadata.fileType, 5);
-                        FileType oldType = galleryFile.getFileType();
-                        
-                        String originalName = galleryFile.getOriginalName();
-                        boolean isWebp = originalName != null && originalName.toLowerCase().endsWith(".webp");
-                        
-                        if (!isWebp || oldType == FileType.DIRECTORY) {
-                            galleryFile.setOverriddenFileType(realType);
-                            typeChanged[0] = oldType != realType;
-                        }
-                    }
+                    // Cache the metadata result
+                    metadataCache.put(fileUri, metadata);
                     
-                    if (metadata.originalName != null && !metadata.originalName.isEmpty()) {
-                        galleryFile.setOriginalName(metadata.originalName);
-                    }
-                    
-                    if (metadata.thumbUri != null) {
-                        galleryFile.setThumbUri(metadata.thumbUri);
-                        FragmentActivity currentContext = weakReference.get();
-                        if (currentContext != null && !currentContext.isDestroyed()) {
-                            currentContext.runOnUiThread(() -> {
-                                Glide.with(currentContext)
-                                        .load(metadata.thumbUri)
-                                        .apply(GlideStuff.getRequestOptions(useDiskCache))
-                                        .into(holder.binding.imageView);
-                                if (typeChanged[0]) {
-                                    int pos = galleryFiles.indexOf(galleryFile);
-                                    if (pos >= 0) {
-                                        notifyItemChanged(pos, new Payload(Payload.TYPE_NEW_FILENAME));
-                                    }
-                                }
-                            });
-                        }
-                    } else {
-                        FragmentActivity currentContext = weakReference.get();
-                        if (currentContext != null && !currentContext.isDestroyed()) {
-                            currentContext.runOnUiThread(() -> {
-                                Glide.with(currentContext)
-                                        .load(R.drawable.outline_broken_image_24)
-                                        .centerInside()
-                                        .into(holder.binding.imageView);
-                                if (typeChanged[0]) {
-                                    int pos = galleryFiles.indexOf(galleryFile);
-                                    if (pos >= 0) {
-                                        notifyItemChanged(pos, new Payload(Payload.TYPE_NEW_FILENAME));
-                                    }
-                                }
-                            });
-                        }
-                    }
-                } else {
+                    // Apply metadata on UI thread
                     FragmentActivity currentContext = weakReference.get();
-                    if (currentContext != null && !currentContext.isDestroyed()) {
+                    if (currentContext != null && !currentContext.isDestroyed() && fileUri.equals(holder.getCurrentFileUri())) {
                         currentContext.runOnUiThread(() -> {
-                            Glide.with(currentContext)
-                                    .load(R.drawable.outline_broken_image_24)
-                                    .centerInside()
-                                    .into(holder.binding.imageView);
-                            int pos = galleryFiles.indexOf(galleryFile);
-                            if (pos >= 0) {
-                                notifyItemChanged(pos, new Payload(Payload.TYPE_NEW_FILENAME));
+                            if (fileUri.equals(holder.getCurrentFileUri())) {
+                                applyMetadata(currentContext, galleryFile, holder, metadata, fileUri);
                             }
                         });
                     }
+                } else {
+                    showBrokenImage(holder, fileUri, galleryFile);
                 }
             } catch (Exception e) {
                 e.printStackTrace();
-                FragmentActivity currentContext = weakReference.get();
-                if (currentContext != null && !currentContext.isDestroyed()) {
-                    currentContext.runOnUiThread(() -> {
-                        Glide.with(currentContext)
-                                .load(R.drawable.outline_broken_image_24)
-                                .centerInside()
-                                .into(holder.binding.imageView);
-                        int pos = galleryFiles.indexOf(galleryFile);
-                        if (pos >= 0) {
-                            notifyItemChanged(pos, new Payload(Payload.TYPE_NEW_FILENAME));
-                        }
-                    });
-                }
+                showBrokenImage(holder, fileUri, galleryFile);
+            } finally {
+                pendingTasks.remove(fileUri);
             }
-        }).start();
+        });
+        
+        pendingTasks.put(fileUri, task);
+    }
+    
+    /**
+     * Apply metadata to the holder - used both for cached and fresh results.
+     */
+    private void applyMetadata(FragmentActivity context, GalleryFile galleryFile, 
+                               GalleryGridViewHolder holder, Encryption.V5MetadataResult metadata, Uri fileUri) {
+        // Update file type from metadata (critical for video/gif detection)
+        boolean typeChanged = false;
+        if (metadata.fileType >= 0) {
+            FileType realType = FileType.fromTypeAndVersion(metadata.fileType, 5);
+            FileType oldType = galleryFile.getFileType();
+            
+            String originalName = galleryFile.getOriginalName();
+            boolean isWebp = originalName != null && originalName.toLowerCase().endsWith(".webp");
+            
+            if (!isWebp || oldType == FileType.DIRECTORY) {
+                galleryFile.setOverriddenFileType(realType);
+                typeChanged = oldType != realType;
+            }
+        }
+        
+        if (metadata.originalName != null && !metadata.originalName.isEmpty()) {
+            galleryFile.setOriginalName(metadata.originalName);
+        }
+        
+        if (metadata.thumbUri != null) {
+            galleryFile.setThumbUri(metadata.thumbUri);
+            Glide.with(context)
+                    .load(metadata.thumbUri)
+                    .apply(GlideStuff.getRequestOptions(useDiskCache))
+                    .into(holder.binding.imageView);
+        } else {
+            Glide.with(context)
+                    .load(R.drawable.outline_broken_image_24)
+                    .centerInside()
+                    .into(holder.binding.imageView);
+        }
+        
+        if (typeChanged) {
+            int pos = galleryFiles.indexOf(galleryFile);
+            if (pos >= 0) {
+                notifyItemChanged(pos, new Payload(Payload.TYPE_NEW_FILENAME));
+            }
+        }
+    }
+    
+    /**
+     * Show broken image placeholder.
+     */
+    private void showBrokenImage(GalleryGridViewHolder holder, Uri fileUri, GalleryFile galleryFile) {
+        FragmentActivity currentContext = weakReference.get();
+        if (currentContext != null && !currentContext.isDestroyed() && fileUri.equals(holder.getCurrentFileUri())) {
+            currentContext.runOnUiThread(() -> {
+                if (fileUri.equals(holder.getCurrentFileUri())) {
+                    Glide.with(currentContext)
+                            .load(R.drawable.outline_broken_image_24)
+                            .centerInside()
+                            .into(holder.binding.imageView);
+                    int pos = galleryFiles.indexOf(galleryFile);
+                    if (pos >= 0) {
+                        notifyItemChanged(pos, new Payload(Payload.TYPE_NEW_FILENAME));
+                    }
+                }
+            });
+        }
+    }
+    
+    @Override
+    public void onViewRecycled(@NonNull GalleryGridViewHolder holder) {
+        super.onViewRecycled(holder);
+        
+        // Cancel pending thumbnail load for this ViewHolder
+        Uri fileUri = holder.getCurrentFileUri();
+        if (fileUri != null) {
+            Future<?> pendingTask = pendingTasks.remove(fileUri);
+            if (pendingTask != null && !pendingTask.isDone()) {
+                pendingTask.cancel(true);
+            }
+            holder.setCurrentFileUri(null);
+        }
+        
+        // Clear the Glide request to free memory
+        FragmentActivity context = weakReference.get();
+        if (context != null && !context.isDestroyed()) {
+            Glide.with(context).clear(holder.binding.imageView);
+        }
+    }
+    
+    /**
+     * Call this method when the adapter is being destroyed to shutdown the executor.
+     */
+    public void shutdown() {
+        thumbnailExecutor.shutdownNow();
+        pendingTasks.clear();
+        metadataCache.evictAll();
     }
 
     @NonNull

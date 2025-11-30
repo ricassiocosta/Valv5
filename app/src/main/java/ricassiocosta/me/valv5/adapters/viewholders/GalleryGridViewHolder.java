@@ -18,16 +18,32 @@
 
 package ricassiocosta.me.valv5.adapters.viewholders;
 
+import android.net.Uri;
+
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.RecyclerView;
 
 import ricassiocosta.me.valv5.databinding.AdapterGalleryGridItemBinding;
 
 public class GalleryGridViewHolder extends RecyclerView.ViewHolder {
     public final AdapterGalleryGridItemBinding binding;
+    
+    // Track the current file URI for this ViewHolder to support task cancellation
+    @Nullable
+    private Uri currentFileUri;
 
     public GalleryGridViewHolder(@NonNull AdapterGalleryGridItemBinding binding) {
         super(binding.getRoot());
         this.binding = binding;
+    }
+    
+    public void setCurrentFileUri(@Nullable Uri uri) {
+        this.currentFileUri = uri;
+    }
+    
+    @Nullable
+    public Uri getCurrentFileUri() {
+        return currentFileUri;
     }
 }
