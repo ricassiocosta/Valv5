@@ -556,12 +556,6 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                                     .into(holder.binding.imageView);
                         });
                     }
-                    context.runOnUiThread(() -> {
-                        int pos = holder.getBindingAdapterPosition();
-                        if (pos >= 0) {
-                            notifyItemChanged(pos, new Payload(Payload.TYPE_NEW_FILENAME));
-                        }
-                    });
                 } else {
                     context.runOnUiThread(() -> {
                         Glide.with(context)
