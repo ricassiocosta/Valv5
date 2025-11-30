@@ -20,6 +20,16 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 
+# JNA (Java Native Access) - required for lazysodium
+-dontwarn java.awt.*
+-keep class com.sun.jna.** { *; }
+-keep class * implements com.sun.jna.** { *; }
+-keepclassmembers class * extends com.sun.jna.** { public *; }
+
+# Lazysodium
+-keep class com.goterl.lazysodium.** { *; }
+-keep class com.sun.jna.ptr.** { *; }
+
 # remove all log prints
 -assumenosideeffects class android.util.Log {
     public static boolean isLoggable(java.lang.String, int);

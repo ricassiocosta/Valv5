@@ -87,6 +87,11 @@ dependencies {
     // Argon2id for password hashing (Signal's implementation)
     implementation(libs.argon2)
 
+    // libsodium for streaming AEAD encryption (XChaCha20-Poly1305 secretstream)
+    // JNA 5.5.0 is the version that lazysodium-android 5.1.0 was built with
+    implementation("com.goterl:lazysodium-android:5.1.0@aar")
+    implementation("net.java.dev.jna:jna:5.5.0@aar")
+
     implementation(libs.glide)
     implementation(libs.about.libraries)
     implementation(libs.about.libraries.compose)

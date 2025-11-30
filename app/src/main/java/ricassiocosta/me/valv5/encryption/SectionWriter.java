@@ -107,6 +107,32 @@ public class SectionWriter {
     }
 
     /**
+     * Write a FILE section with streaming (for large files).
+     * Reads directly from the input stream without loading entire file into memory.
+     *
+     * @param fileInputStream Input stream with file data
+     * @param fileSize        Size of the file in bytes
+     * @throws IOException If writing fails
+     */
+    public void writeFileSectionStreaming(@NonNull InputStream fileInputStream, long fileSize)
+            throws IOException {
+        writeSection(SECTION_TYPE_FILE, fileInputStream, fileSize);
+    }
+
+    /**
+     * Write a THUMBNAIL section with streaming (for large thumbnails).
+     * Reads directly from the input stream without loading entire thumbnail into memory.
+     *
+     * @param thumbInputStream Input stream with thumbnail data
+     * @param thumbSize        Size of thumbnail in bytes
+     * @throws IOException If writing fails
+     */
+    public void writeThumbnailSectionStreaming(@NonNull InputStream thumbInputStream, long thumbSize)
+            throws IOException {
+        writeSection(SECTION_TYPE_THUMBNAIL, thumbInputStream, thumbSize);
+    }
+
+    /**
      * Write the END marker to indicate no more sections.
      * Must be called after all sections are written.
      *

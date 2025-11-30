@@ -42,6 +42,8 @@ import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -109,13 +111,21 @@ public class Encryption {
     private static final int CHECK_LENGTH = 12;
     private static final int POLY1305_TAG_LENGTH = 16;
     
+    // Maximum file size for AEAD mode (in bytes)
+    // Files larger than this will use streaming mode with check bytes
+    // AEAD requires loading entire plaintext into memory, so we limit it
+    // to avoid OutOfMemoryError on Android devices
+    private static final long AEAD_MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+    
     // Flags stored in iteration count field (high bits)
-    // Bit 31 (0x80000000): AEAD mode (ChaCha20-Poly1305)
+    // Bit 31 (0x80000000): AEAD mode (ChaCha20-Poly1305) - for small files
     // Bit 30 (0x40000000): Argon2id KDF (instead of PBKDF2)
+    // Bit 29 (0x20000000): SecretStream mode (libsodium XChaCha20-Poly1305) - for large files
     private static final int AEAD_FLAG = 0x80000000;
     private static final int ARGON2_FLAG = 0x40000000;
-    private static final int FLAGS_MASK = 0xC0000000;  // Both flags
-    private static final int ITERATION_MASK = 0x3FFFFFFF;  // Iteration count (30 bits)
+    private static final int STREAM_FLAG = 0x20000000;
+    private static final int FLAGS_MASK = 0xE0000000;  // All three flags
+    private static final int ITERATION_MASK = 0x1FFFFFFF;  // Iteration count (29 bits)
     
     // Argon2id parameters (OWASP recommendations for high-security)
     // These provide strong protection against GPU/ASIC attacks
@@ -696,16 +706,49 @@ public class Encryption {
 
     /**
      * Write composite file content (helper for createCompositeFile).
-     * Uses ChaCha20-Poly1305 AEAD for authenticated encryption.
      * 
-     * Format V5 with AEAD:
-     * - Header: [version:4][salt:16][iv:12][iteration_count_with_aead_flag:4]
+     * For files <= AEAD_MAX_FILE_SIZE: Uses ChaCha20-Poly1305 AEAD
+     * For files > AEAD_MAX_FILE_SIZE: Uses streaming ChaCha20 with check bytes
+     * 
+     * Format V5 with AEAD (small files):
+     * - Header: [version:4][salt:16][iv:12][iteration_count_with_flags:4]
      * - Body: [encrypted_data + poly1305_tag:16]
      * 
-     * The AEAD_FLAG (0x80000000) is set in iteration_count to indicate AEAD mode.
-     * Check bytes are no longer needed - Poly1305 tag provides authentication.
+     * Format V5 with streaming (large files):
+     * - Header: [version:4][salt:16][iv:12][iteration_count_with_flags:4][check_bytes:12]
+     * - Body: [encrypted_data] (check_bytes also inside encrypted content for verification)
      */
     private static void writeCompositeFile(
+            FragmentActivity context,
+            InputStream fileInputStream,
+            long fileSize,
+            @Nullable InputStream thumbnailInputStream,
+            long thumbnailSize,
+            @Nullable byte[] noteBytes,
+            DocumentFile outputFile,
+            char[] password,
+            String originalFileName,
+            int fileType) throws GeneralSecurityException, IOException, JSONException {
+
+        // Calculate total content size to decide encryption mode
+        long totalContentSize = fileSize + thumbnailSize + (noteBytes != null ? noteBytes.length : 0);
+        
+        if (totalContentSize <= AEAD_MAX_FILE_SIZE) {
+            // Use AEAD for smaller files (more secure, requires all data in memory)
+            writeCompositeFileAEAD(context, fileInputStream, fileSize, thumbnailInputStream, 
+                    thumbnailSize, noteBytes, outputFile, password, originalFileName, fileType);
+        } else {
+            // Use streaming for larger files (check bytes for verification, memory efficient)
+            writeCompositeFileStreaming(context, fileInputStream, fileSize, thumbnailInputStream,
+                    thumbnailSize, noteBytes, outputFile, password, originalFileName, fileType);
+        }
+    }
+    
+    /**
+     * Write composite file using ChaCha20-Poly1305 AEAD (for smaller files).
+     * All data is loaded into memory for authenticated encryption.
+     */
+    private static void writeCompositeFileAEAD(
             FragmentActivity context,
             InputStream fileInputStream,
             long fileSize,
@@ -723,7 +766,7 @@ public class Encryption {
         final boolean useArgon2 = settings.useArgon2();
         
         // Set flags in iteration count:
-        // - AEAD_FLAG: Always set for new files (ChaCha20-Poly1305)
+        // - AEAD_FLAG: Set for AEAD mode (ChaCha20-Poly1305)
         // - ARGON2_FLAG: Set if using Argon2id instead of PBKDF2
         int storedIterationCount = ITERATION_COUNT | AEAD_FLAG;
         if (useArgon2) {
@@ -824,6 +867,118 @@ public class Encryption {
     }
     
     /**
+     * Write composite file using libsodium secretstream (for larger files).
+     * Uses XChaCha20-Poly1305 streaming AEAD for memory-efficient authenticated encryption.
+     * 
+     * Format:
+     * - Header: [version:4][salt:16][unused_iv:12][iteration_count|STREAM_FLAG|ARGON2_FLAG:4]
+     * - Body: [secretstream_header:24][encrypted_chunks...]
+     * 
+     * Each chunk is authenticated individually, allowing streaming decryption
+     * with per-chunk integrity verification.
+     * 
+     * This method streams data directly without loading the entire file into memory.
+     */
+    private static void writeCompositeFileStreaming(
+            FragmentActivity context,
+            InputStream fileInputStream,
+            long fileSize,
+            @Nullable InputStream thumbnailInputStream,
+            long thumbnailSize,
+            @Nullable byte[] noteBytes,
+            DocumentFile outputFile,
+            char[] password,
+            String originalFileName,
+            int fileType) throws GeneralSecurityException, IOException, JSONException {
+
+        SecureRandom sr = SecureRandom.getInstanceStrong();
+        Settings settings = Settings.getInstance(context);
+        final int ITERATION_COUNT = settings.getIterationCount();
+        final boolean useArgon2 = settings.useArgon2();
+        
+        // Set STREAM_FLAG to indicate secretstream mode (not AEAD)
+        // Also set ARGON2_FLAG if using Argon2id
+        int storedIterationCount = ITERATION_COUNT | STREAM_FLAG;
+        if (useArgon2) {
+            storedIterationCount |= ARGON2_FLAG;
+        }
+
+        // Generate header components
+        byte[] versionBytes = toByteArray(ENCRYPTION_VERSION_5);
+        byte[] salt = new byte[SALT_LENGTH];
+        byte[] ivBytes = new byte[IV_LENGTH];  // Not used for secretstream, but kept for format compatibility
+        byte[] iterationCountBytes = toByteArray(storedIterationCount);
+        sr.nextBytes(salt);
+        sr.nextBytes(ivBytes);  // Random bytes for padding
+
+        // Derive key using the appropriate KDF
+        SecretKey secretKey = deriveKey(password, salt, ITERATION_COUNT, useArgon2);
+        byte[] keyBytes = secretKey.getEncoded();
+
+        // Open output stream
+        OutputStream fos = new BufferedOutputStream(
+                context.getContentResolver().openOutputStream(outputFile.getUri()),
+                1024 * 64);  // 64KB buffer
+
+        // Write V5 header (36 bytes - no check bytes for secretstream)
+        fos.write(versionBytes);
+        fos.write(salt);
+        fos.write(ivBytes);  // Padding for format compatibility
+        fos.write(iterationCountBytes);
+
+        // Create secretstream encrypting output stream
+        // This will encrypt data in chunks as we write, without loading everything in memory
+        SecretStreamHelper.SecretStreamOutputStream encryptedOut = 
+                new SecretStreamHelper.SecretStreamOutputStream(keyBytes, fos);
+        
+        // Build metadata JSON
+        JSONObject json = new JSONObject();
+        json.put(JSON_ORIGINAL_NAME, originalFileName);
+        if (fileType >= 0) {
+            json.put(JSON_FILE_TYPE, fileType);
+        }
+        json.put(JSON_CONTENT_TYPE, ContentType.FILE.value);
+
+        JSONObject sectionsObj = new JSONObject();
+        sectionsObj.put("FILE", true);
+        sectionsObj.put("THUMBNAIL", thumbnailInputStream != null && thumbnailSize > 0);
+        sectionsObj.put("NOTE", noteBytes != null && noteBytes.length > 0);
+        json.put("sections", sectionsObj);
+
+        // Write metadata (small, goes into buffer)
+        encryptedOut.write(("\n" + json + "\n").getBytes(StandardCharsets.UTF_8));
+
+        // Write FILE section - streams directly without loading into memory
+        SectionWriter sectionWriter = new SectionWriter(encryptedOut);
+        sectionWriter.writeFileSectionStreaming(fileInputStream, fileSize);
+
+        // Write THUMBNAIL section if present (usually small)
+        if (thumbnailInputStream != null && thumbnailSize > 0) {
+            sectionWriter.writeThumbnailSectionStreaming(thumbnailInputStream, thumbnailSize);
+        }
+
+        // Write NOTE section if present (usually small)
+        if (noteBytes != null && noteBytes.length > 0) {
+            sectionWriter.writeNoteSection(noteBytes);
+        }
+
+        // Write END marker
+        sectionWriter.writeEndMarker();
+
+        // Finish and close the encrypted stream (writes final TAG_FINAL chunk)
+        encryptedOut.finish();
+        encryptedOut.close();
+        
+        // Clean up
+        Arrays.fill(keyBytes, (byte) 0);
+        try {
+            secretKey.destroy();
+        } catch (DestroyFailedException e) {
+            // Ignore
+        }
+    }
+    
+    /**
      * Helper to read all bytes from an InputStream.
      */
     private static byte[] readAllBytes(InputStream is) throws IOException {
@@ -882,13 +1037,17 @@ public class Encryption {
 
     /**
      * Decrypt an encrypted file and return streams for reading.
-     * Supports both AEAD (new) and legacy (old) V5 formats.
+     * Supports AEAD, SecretStream, and legacy V5 formats.
      * 
      * AEAD format (iteration_count has AEAD_FLAG set):
      * - Header: [version:4][salt:16][iv:12][iteration_count|AEAD_FLAG:4]
      * - Body: [encrypted_data + poly1305_tag:16]
      * 
-     * Legacy format (no AEAD_FLAG):
+     * SecretStream format (iteration_count has STREAM_FLAG set):
+     * - Header: [version:4][salt:16][unused_iv:12][iteration_count|STREAM_FLAG:4]
+     * - Body: [secretstream_header:24][encrypted_chunks...]
+     * 
+     * Legacy format (no AEAD_FLAG or STREAM_FLAG):
      * - Header: [version:4][salt:16][iv:12][iteration_count:4][check_bytes:12]
      * - Body: [encrypted_data with check_bytes inside]
      */
@@ -898,7 +1057,7 @@ public class Encryption {
         byte[] ivBytes = new byte[IV_LENGTH];
         byte[] iterationCountBytes = new byte[INTEGER_LENGTH];
 
-        // Read header common to both formats
+        // Read header common to all formats
         inputStream.read(versionBytes);
         inputStream.read(salt);
         inputStream.read(ivBytes);
@@ -909,19 +1068,66 @@ public class Encryption {
         
         // Extract flags from iteration count
         final boolean useAEAD = (rawIterationCount & AEAD_FLAG) != 0;
+        final boolean useStream = (rawIterationCount & STREAM_FLAG) != 0;
         final boolean useArgon2 = (rawIterationCount & ARGON2_FLAG) != 0;
         final int ITERATION_COUNT = rawIterationCount & ITERATION_MASK; // Clear all flags
 
         // Derive key using the appropriate KDF
         SecretKey secretKey = deriveKey(password, salt, ITERATION_COUNT, useArgon2);
 
-        if (useAEAD) {
+        if (useStream) {
+            // SecretStream mode: libsodium XChaCha20-Poly1305 streaming
+            return decryptSecretStream(inputStream, secretKey, DETECTED_VERSION);
+        } else if (useAEAD) {
             // AEAD mode: ChaCha20-Poly1305
             return decryptAEAD(inputStream, secretKey, versionBytes, salt, ivBytes, iterationCountBytes, DETECTED_VERSION);
         } else {
             // Legacy mode: ChaCha20 with check bytes
             return decryptLegacy(inputStream, secretKey, ivBytes, password, salt, ITERATION_COUNT, DETECTED_VERSION);
         }
+    }
+    
+    /**
+     * Decrypt using libsodium secretstream (XChaCha20-Poly1305).
+     * Each chunk is authenticated individually, allowing streaming with integrity.
+     * Uses SecretStreamInputStream for true streaming decryption without loading all data in memory.
+     */
+    private static Streams decryptSecretStream(
+            InputStream inputStream,
+            SecretKey secretKey,
+            int detectedVersion) throws IOException, GeneralSecurityException, InvalidPasswordException, JSONException {
+        
+        byte[] keyBytes = secretKey.getEncoded();
+        
+        // Create streaming decryption - data is decrypted on-demand as it's read
+        SecretStreamHelper.SecretStreamInputStream decryptedStream = 
+            new SecretStreamHelper.SecretStreamInputStream(keyBytes, inputStream);
+        
+        // Parse decrypted content (same as AEAD)
+        if (detectedVersion >= ENCRYPTION_VERSION_5) {
+            // Skip leading newline
+            int newline1 = decryptedStream.read();
+            if (newline1 != 0x0A) {
+                throw new IOException("Not valid V5 SecretStream file, expected 0x0A but got 0x" + String.format("%02X", newline1));
+            }
+
+            // Read JSON metadata
+            byte[] jsonBytes = readUntilNewline(decryptedStream);
+            String jsonStr = new String(jsonBytes, StandardCharsets.UTF_8);
+            JSONObject json = new JSONObject(jsonStr);
+            String originalName = json.has(JSON_ORIGINAL_NAME) ? json.getString(JSON_ORIGINAL_NAME) : "";
+            int fileType = json.has(JSON_FILE_TYPE) ? json.getInt(JSON_FILE_TYPE) : -1;
+
+            // Create CompositeStreams wrapper for reading V5 sections
+            CompositeStreams compositeStreams = new CompositeStreams(decryptedStream);
+
+            // Store metadata in a custom Streams object for compatibility
+            Streams streams = new Streams(decryptedStream, secretKey, originalName, fileType, ContentType.FILE, null);
+            streams.compositeStreams = compositeStreams;
+            return streams;
+        }
+
+        throw new IOException("Only V5 encrypted files are supported.");
     }
     
     /**

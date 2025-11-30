@@ -20,6 +20,7 @@ kotlin = "2.2.0"
 coreKtx = "1.16.0"
 biometrics = "1.4.0-alpha04"
 argon2 = "13.1"
+lazysodium = "5.1.0"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -34,6 +35,7 @@ preferences = { group = "androidx.preference", name = "preference-ktx", version.
 activity = { group = "androidx.activity", name = "activity", version.ref = "activity" }
 biometrics = { group = "androidx.biometric", name = "biometric", version.ref = "biometrics" }
 argon2 = { group = "org.signal", name = "argon2", version.ref = "argon2" }
+lazysodium = { group = "com.goterl", name = "lazysodium-android", version.ref = "lazysodium" }
 
 security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "crypto" }
 media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "exoplayer" }
