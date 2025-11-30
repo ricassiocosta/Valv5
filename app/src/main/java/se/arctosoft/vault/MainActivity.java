@@ -4,11 +4,14 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
+
 
 import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
@@ -155,6 +158,61 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private boolean isSystemApp(String packageName) {
+        // Lista de apps do sistema que não devemos abrir
+        return packageName.equals("com.android.systemui") ||
+               packageName.equals("android") ||
+               packageName.startsWith("com.android.") ||
+               packageName.startsWith("com.google.android.") ||
+               packageName.contains("launcher");
+    }
+    
+    private void returnToLastApp() {
+        Settings settings = Settings.getInstance(this);
+        
+        // Primeiro tenta usar o app preferido configurado pelo usuário
+        String preferredApp = settings.getPreferredApp();
+        if (preferredApp != null && !preferredApp.isEmpty()) {
+            if (tryOpenApp(preferredApp)) {
+                return;
+            }
+        }
+        
+        // Se não há app preferido ou falhou, tenta usar o último app salvo
+        String lastAppPackage = settings.getLastAppPackage();
+        if (lastAppPackage != null && !lastAppPackage.isEmpty()) {
+            if (tryOpenApp(lastAppPackage)) {
+                return;
+            }
+        }
+        
+        // Se não conseguir abrir nenhum app, volta para a home screen
+        openHomeScreen();
+    }
+    
+    private boolean tryOpenApp(String packageName) {
+        try {
+            Intent launchIntent = getPackageManager().getLaunchIntentForPackage(packageName);
+            if (launchIntent != null) {
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                startActivity(launchIntent);
+                Log.d(TAG, "Opened app: " + packageName);
+                return true;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error opening app: " + packageName, e);
+        }
+        return false;
+    }
+    
+    private void openHomeScreen() {
+        Intent homeIntent = new Intent(Intent.ACTION_MAIN);
+        homeIntent.addCategory(Intent.CATEGORY_HOME);
+        homeIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(homeIntent);
+        Log.d(TAG, "Opened home screen");
+    }
+
     public class ScreenOffReceiver extends BroadcastReceiver {
         private static final String TAG = "ScreenOffReceiver";
 
@@ -166,9 +224,42 @@ public class MainActivity extends AppCompatActivity {
                 assert navHostFragment != null;
                 NavController navController = navHostFragment.getNavController();
                 if (navController.getCurrentDestination() != null && navController.getCurrentDestination().getId() != R.id.password) {
+                    Settings settings = Settings.getInstance(MainActivity.this);
+                    
+                    // Se a funcionalidade de retornar ao último app estiver habilitada, salva o app atual
+                    if (settings.returnToLastApp()) {
+                        saveLastOpenedAppBeforeLock();
+                    }
+                    
                     Password.lock(MainActivity.this, false);
+                    
+                    // Se a funcionalidade de retornar ao último app estiver habilitada
+                    if (settings.returnToLastApp()) {
+                        // Executa o retorno ao último app após um pequeno delay para garantir que o lock seja processado
+                        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                            returnToLastApp();
+                        }, 200);
+                    }
+                    
                     finish();
                 }
+            }
+        }
+        
+        private void saveLastOpenedAppBeforeLock() {
+            // Como agora o usuário configura manualmente o app preferido,
+            // este método pode ser simplificado ou removido.
+            // Mantemos apenas para compatibilidade futura.
+            Log.d(TAG, "Auto-lock triggered - using user configured preferred app");
+        }
+        
+        private boolean isValidApp(String packageName) {
+            try {
+                PackageManager pm = getPackageManager();
+                Intent launchIntent = pm.getLaunchIntentForPackage(packageName);
+                return launchIntent != null;
+            } catch (Exception e) {
+                return false;
             }
         }
     }

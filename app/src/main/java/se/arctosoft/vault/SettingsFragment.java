@@ -2,6 +2,7 @@ package se.arctosoft.vault;
 
 import static androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Menu;
@@ -64,6 +65,8 @@ public class SettingsFragment extends PreferenceFragmentCompat implements MenuPr
         SwitchPreferenceCompat deleteByDefault = findPreference(Settings.PREF_ENCRYPTION_DELETE_BY_DEFAULT);
 
         SwitchPreferenceCompat exitOnLock = findPreference(Settings.PREF_APP_EXIT_ON_LOCK);
+        SwitchPreferenceCompat returnToLastApp = findPreference(Settings.PREF_APP_RETURN_TO_LAST_APP);
+        Preference preferredApp = findPreference(Settings.PREF_APP_PREFERRED_APP);
 
         FragmentActivity activity = requireActivity();
         Settings settings = Settings.getInstance(activity);
@@ -157,6 +160,17 @@ public class SettingsFragment extends PreferenceFragmentCompat implements MenuPr
             return true;
         });
 
+        returnToLastApp.setOnPreferenceChangeListener((preference, newValue) -> {
+            settings.setReturnToLastApp((boolean) newValue);
+            return true;
+        });
+
+        preferredApp.setOnPreferenceClickListener(preference -> {
+            showAppSelectionDialog(activity, settings);
+            return true;
+        });
+        updatePreferredAppSummary(preferredApp, settings);
+
         editFolders.setOnPreferenceClickListener(preference -> {
             Dialogs.showEditIncludedFolders(activity, settings, selectedToRemove -> {
                 settings.removeGalleryDirectories(selectedToRemove);
@@ -232,5 +246,105 @@ public class SettingsFragment extends PreferenceFragmentCompat implements MenuPr
     @Override
     public boolean onMenuItemSelected(@NonNull MenuItem menuItem) {
         return false;
+    }
+
+    private void showAppSelectionDialog(FragmentActivity activity, Settings settings) {
+        try {
+            android.content.pm.PackageManager pm = activity.getPackageManager();
+            
+            // Obtém todos os apps que podem ser iniciados
+            Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
+            mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+            java.util.List<android.content.pm.ResolveInfo> pkgAppsList = pm.queryIntentActivities(mainIntent, 0);
+            
+            java.util.List<String> availableApps = new java.util.ArrayList<>();
+            java.util.List<String> availablePackages = new java.util.ArrayList<>();
+            
+            // Filtra apps (exclui o próprio Valv e alguns apps do sistema)
+            for (android.content.pm.ResolveInfo resolveInfo : pkgAppsList) {
+                String packageName = resolveInfo.activityInfo.packageName;
+                String appName = resolveInfo.loadLabel(pm).toString();
+                
+                // Pula o próprio Valv e alguns apps do sistema, mas permite Chrome
+                if (!packageName.equals(activity.getPackageName()) &&
+                    !packageName.equals("com.android.settings") &&
+                    !packageName.equals("com.android.systemui") &&
+                    (!packageName.startsWith("com.android.") || packageName.equals("com.android.chrome"))) {
+                    
+                    availableApps.add(appName);
+                    availablePackages.add(packageName);
+                }
+            }
+            
+            if (availableApps.isEmpty()) {
+                Toaster.getInstance(activity).showLong("No apps found");
+                return;
+            }
+            
+            // Ordena alfabeticamente usando um approach simples
+            java.util.List<AppInfo> appInfoList = new java.util.ArrayList<>();
+            for (int i = 0; i < availableApps.size(); i++) {
+                appInfoList.add(new AppInfo(availableApps.get(i), availablePackages.get(i)));
+            }
+            
+            java.util.Collections.sort(appInfoList, new java.util.Comparator<AppInfo>() {
+                @Override
+                public int compare(AppInfo a1, AppInfo a2) {
+                    return a1.name.compareToIgnoreCase(a2.name);
+                }
+            });
+            
+            String[] sortedAppNames = new String[appInfoList.size()];
+            String[] sortedPackages = new String[appInfoList.size()];
+            for (int i = 0; i < appInfoList.size(); i++) {
+                sortedAppNames[i] = appInfoList.get(i).name;
+                sortedPackages[i] = appInfoList.get(i).packageName;
+            }
+            
+            new androidx.appcompat.app.AlertDialog.Builder(activity)
+                    .setTitle("Choose preferred app")
+                    .setItems(sortedAppNames, (dialog, which) -> {
+                        String selectedPackage = sortedPackages[which];
+                        settings.setPreferredApp(selectedPackage);
+                        updatePreferredAppSummary(findPreference(Settings.PREF_APP_PREFERRED_APP), settings);
+                        Toaster.getInstance(activity).showShort("App selected: " + sortedAppNames[which]);
+                    })
+                    .setNeutralButton("Remove selection", (dialog, which) -> {
+                        settings.setPreferredApp(null);
+                        updatePreferredAppSummary(findPreference(Settings.PREF_APP_PREFERRED_APP), settings);
+                        Toaster.getInstance(activity).showShort("Selection removed");
+                    })
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show();
+                    
+        } catch (Exception e) {
+            android.util.Log.e("SettingsFragment", "Error loading apps", e);
+            Toaster.getInstance(activity).showLong("Error loading apps: " + e.getMessage());
+        }
+    }
+    
+    private static class AppInfo {
+        final String name;
+        final String packageName;
+        
+        AppInfo(String name, String packageName) {
+            this.name = name;
+            this.packageName = packageName;
+        }
+    }
+    
+    private void updatePreferredAppSummary(Preference preference, Settings settings) {
+        String preferredApp = settings.getPreferredApp();
+        if (preferredApp != null && !preferredApp.isEmpty()) {
+            try {
+                android.content.pm.PackageManager pm = requireContext().getPackageManager();
+                String appName = pm.getApplicationLabel(pm.getApplicationInfo(preferredApp, 0)).toString();
+                preference.setSummary("Selected: " + appName);
+            } catch (Exception e) {
+                preference.setSummary("App not found");
+            }
+        } else {
+            preference.setSummary("No app selected");
+        }
     }
 }

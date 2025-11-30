@@ -53,7 +53,10 @@ public class Settings {
     public static final String PREF_APP_SECURE = "app_secure";
     public static final String PREF_APP_EDIT_FOLDERS = "app_edit_folders";
     public static final String PREF_APP_EXIT_ON_LOCK = "app_exit_on_lock";
-    public static final String PREF_APP_BIOMETRICS = "app_biometrics";
+    public static final String PREF_APP_RETURN_TO_LAST_APP = "app_return_to_last_app";
+    public static final String PREF_APP_LAST_APP_PACKAGE = "app_last_app_package";
+    public static final String PREF_APP_PREFERRED_APP = "app_preferred_app";
+    public static final String PREF_APP_BIOMETRICS = "app_biometrics";;
     public static final String PREF_APP_BIOMETRICS_DATA = "app_biometrics_data";
 
     private final Context context;
@@ -147,6 +150,30 @@ public class Settings {
 
     public void setExitOnLock(boolean exitOnLock) {
         getSharedPrefsEditor().putBoolean(PREF_APP_EXIT_ON_LOCK, exitOnLock).apply();
+    }
+
+    public boolean returnToLastApp() {
+        return getSharedPrefs().getBoolean(PREF_APP_RETURN_TO_LAST_APP, false);
+    }
+
+    public void setReturnToLastApp(boolean returnToLastApp) {
+        getSharedPrefsEditor().putBoolean(PREF_APP_RETURN_TO_LAST_APP, returnToLastApp).apply();
+    }
+
+    public String getLastAppPackage() {
+        return getSharedPrefs().getString(PREF_APP_LAST_APP_PACKAGE, null);
+    }
+
+    public void setLastAppPackage(String packageName) {
+        getSharedPrefsEditor().putString(PREF_APP_LAST_APP_PACKAGE, packageName).apply();
+    }
+
+    public String getPreferredApp() {
+        return getSharedPrefs().getString(PREF_APP_PREFERRED_APP, null);
+    }
+
+    public void setPreferredApp(String packageName) {
+        getSharedPrefsEditor().putString(PREF_APP_PREFERRED_APP, packageName).apply();
     }
 
     public void addGalleryDirectory(@NonNull Uri uri, boolean asRootDir, @Nullable IOnDirectoryAdded onDirectoryAdded) {
