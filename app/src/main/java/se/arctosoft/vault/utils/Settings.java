@@ -56,7 +56,7 @@ public class Settings {
     public static final String PREF_APP_RETURN_TO_LAST_APP = "app_return_to_last_app";
     public static final String PREF_APP_LAST_APP_PACKAGE = "app_last_app_package";
     public static final String PREF_APP_PREFERRED_APP = "app_preferred_app";
-    public static final String PREF_APP_BIOMETRICS = "app_biometrics";;
+    public static final String PREF_APP_BIOMETRICS = "app_biometrics";
     public static final String PREF_APP_BIOMETRICS_DATA = "app_biometrics_data";
 
     private final Context context;
