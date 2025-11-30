@@ -449,14 +449,12 @@ public class GalleryFile implements Comparable<GalleryFile> {
                 if (fileToCheck != null) {
                     try {
                         char[] password = Password.getInstance().getPassword();
-                        // For v2 files, the isThumb parameter is not used. We pass false.
                         if (fileToCheck.getThumbUri() != null) {
                             Encryption.checkPassword(context, fileToCheck.getThumbUri(), password, fileToCheck.getVersion(), false);
                         } else {
                             Encryption.checkPassword(context, fileToCheck.getUri(), password, fileToCheck.getVersion(), false);
                         }
                     } catch (InvalidPasswordException e) {
-                        // Wrong password, so we show an empty folder
                         this.fileCount = 0;
                         this.firstFileInDirectoryWithThumb = null;
                         findFilesInDirectoryStatus.set(FIND_FILES_DONE);
@@ -465,7 +463,6 @@ public class GalleryFile implements Comparable<GalleryFile> {
                         }
                         return;
                     } catch (Exception e) {
-                        // Other error, log it and proceed as if empty
                         android.util.Log.e(TAG, "Error checking password for folder " + fileUri, e);
                         this.fileCount = 0;
                         this.firstFileInDirectoryWithThumb = null;

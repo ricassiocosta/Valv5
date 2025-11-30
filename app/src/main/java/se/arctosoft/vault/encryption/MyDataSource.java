@@ -70,7 +70,6 @@ public class MyDataSource implements DataSource {
         }
 
         // Use streaming for V5 to avoid loading entire file into memory
-        // For V1-V4, uses the same input stream
         cachedInputStream = streams.getInputStreamStreaming();
         if (cachedInputStream == null) {
             Log.e(TAG, "open: inputStream is null!");

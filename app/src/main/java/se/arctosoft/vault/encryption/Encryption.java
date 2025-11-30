@@ -103,9 +103,9 @@ public class Encryption {
     private static final String JSON_ORIGINAL_NAME = "originalName";
     private static final String JSON_FILE_TYPE = "fileType";
     private static final String JSON_CONTENT_TYPE = "contentType";
-    private static final String JSON_RELATED_FILES = "relatedFiles";  // Fase 2: array of related files with hashes
-    private static final String JSON_THUMB_NAME = "thumbName";  // V4: filename of thumbnail for quick lookup
-    private static final String JSON_NOTE_NAME = "noteName";    // V4: filename of note for quick lookup
+    private static final String JSON_RELATED_FILES = "relatedFiles";
+    private static final String JSON_THUMB_NAME = "thumbName";
+    private static final String JSON_NOTE_NAME = "noteName";
     public static final String BIOMETRICS_ALIAS = "vault_key";
 
     // Encryption versions
@@ -141,7 +141,7 @@ public class Encryption {
         }
     }
 
-    // Fase 2: Class for storing related file information (thumbnail, note, etc.)
+    // Class for storing related file information (thumbnail, note, etc.)
     public static class RelatedFile {
         public final String fileHash;      // SHA256 hash of (filename + encryption key)
         public final ContentType contentType; // THUMBNAIL, NOTE, etc.
@@ -183,7 +183,7 @@ public class Encryption {
     }
 
     /**
-     * Fase 2: Calculate SHA256 hash for file correlation
+     * Calculate SHA256 hash for file correlation
      * Hash = SHA256(filename + encryption key as bytes)
      * This hash is used to correlate related files (thumbnails, notes) without using deterministic naming
      *
@@ -337,9 +337,9 @@ public class Encryption {
         private final String originalFileName, inputString;
         private final int fileType;
         private final ContentType contentType;
-        private final RelatedFile[] relatedFiles;  // Fase 2: array of related files
-        public String thumbFileName;  // V4: filename of thumbnail for quick lookup (set after construction)
-        public CompositeStreams compositeStreams;  // V5: wrapper for reading composite file sections
+        private final RelatedFile[] relatedFiles;
+        public String thumbFileName;
+        public CompositeStreams compositeStreams;
 
         private Streams(@NonNull InputStream inputStream, @NonNull CipherOutputStream outputStream, @NonNull SecretKey secretKey) {
             this.inputStream = inputStream;
@@ -396,7 +396,6 @@ public class Encryption {
             this.relatedFiles = null;
         }
 
-        // Fase 2: Constructor with relatedFiles array for correlation
         private Streams(@NonNull InputStream inputStream, @NonNull SecretKey secretKey, @NonNull String originalFileName, int fileType, ContentType contentType, RelatedFile[] relatedFiles) {
             this.inputStream = inputStream;
             this.outputStream = null;
@@ -775,7 +774,6 @@ public class Encryption {
         createTextFile(context, input, outputFile, password, sourceFileName, version, fileType, contentType, null);
     }
 
-    // Fase 2: Overload with relatedFiles parameter
     private static void createTextFile(FragmentActivity context, String input, DocumentFile outputFile, char[] password, String sourceFileName, int version, int fileType, ContentType contentType, @Nullable RelatedFile[] relatedFiles) throws GeneralSecurityException, IOException, JSONException {
         Streams streams = getTextCipherOutputStream(context, input, outputFile, password, sourceFileName, version, fileType, contentType, relatedFiles);
         streams.outputStream.write(streams.inputString.getBytes(StandardCharsets.UTF_8));
@@ -794,7 +792,6 @@ public class Encryption {
         createThumb(context, input, outputThumbFile, password, sourceFileName, version, fileType, contentType, null);
     }
 
-    // Fase 2: Overload with relatedFiles parameter
     private static void createThumb(FragmentActivity context, Uri input, DocumentFile outputThumbFile, char[] password, String sourceFileName, int version, int fileType, ContentType contentType, @Nullable RelatedFile[] relatedFiles) throws GeneralSecurityException, IOException, ExecutionException, InterruptedException, JSONException {
         Streams streams = getCipherOutputStream(context, input, outputThumbFile, password, sourceFileName, version, fileType, contentType, relatedFiles);
 
@@ -901,12 +898,10 @@ public class Encryption {
         return getCipherOutputStream(context, input, outputFile, password, sourceFileName, version, fileType, contentType, null, null);
     }
 
-    // Fase 2: Overload with thumbFileName for V4 quick lookup
     private static Streams getCipherOutputStream(FragmentActivity context, Uri input, DocumentFile outputFile, char[] password, String sourceFileName, int version, int fileType, @Nullable String thumbFileName) throws GeneralSecurityException, IOException, JSONException {
         return getCipherOutputStream(context, input, outputFile, password, sourceFileName, version, fileType, ContentType.FILE, null, thumbFileName);
     }
 
-    // Fase 2: Overload with RelatedFile array for correlation
     private static Streams getCipherOutputStream(FragmentActivity context, Uri input, DocumentFile outputFile, char[] password, String sourceFileName, int version, int fileType, ContentType contentType, @Nullable RelatedFile[] relatedFiles) throws GeneralSecurityException, IOException, JSONException {
         return getCipherOutputStream(context, input, outputFile, password, sourceFileName, version, fileType, contentType, relatedFiles, null);
     }
@@ -940,7 +935,7 @@ public class Encryption {
         json.put(JSON_ORIGINAL_NAME, sourceFileName);
         json.put(JSON_FILE_TYPE, fileType);
         json.put(JSON_CONTENT_TYPE, contentType.value);
-        // Fase 2: Store related files with hashes for correlation
+        // Store related files with hashes for correlation
         if (relatedFiles != null && relatedFiles.length > 0) {
             JSONArray relatedFilesJson = new JSONArray();
             for (RelatedFile relatedFile : relatedFiles) {
@@ -964,7 +959,7 @@ public class Encryption {
         return getTextCipherOutputStream(context, input, outputFile, password, sourceFileName, version, fileType, contentType, null);
     }
 
-    // Fase 2: Overload with RelatedFile array for correlation
+    // Overload with RelatedFile array for correlation
     private static Streams getTextCipherOutputStream(FragmentActivity context, String input, DocumentFile outputFile, char[] password, String sourceFileName, int version, int fileType, ContentType contentType, @Nullable RelatedFile[] relatedFiles) throws GeneralSecurityException, IOException, JSONException {
         SecureRandom sr = SecureRandom.getInstanceStrong();
         Settings settings = Settings.getInstance(context);
@@ -995,7 +990,7 @@ public class Encryption {
             json.put(JSON_FILE_TYPE, fileType);
         }
         json.put(JSON_CONTENT_TYPE, contentType.value);
-        // Fase 2: Store related files with hashes for correlation
+        // Store related files with hashes for correlation
         if (relatedFiles != null && relatedFiles.length > 0) {
             JSONArray relatedFilesJson = new JSONArray();
             for (RelatedFile relatedFile : relatedFiles) {

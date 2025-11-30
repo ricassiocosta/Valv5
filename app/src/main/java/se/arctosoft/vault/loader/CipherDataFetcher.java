@@ -62,7 +62,6 @@ public class CipherDataFetcher implements DataFetcher<InputStream> {
             InputStream inputStream = context.getContentResolver().openInputStream(uri);
             
             // For V5, always load FILE, not thumbnail
-            // For V1-V4, use the original logic
             boolean loadThumbnail = false;  // V5 only: always load FILE section
             
             android.util.Log.e(TAG, "loadData: uri=" + uri + ", version=" + version + ", loadThumbnail=" + loadThumbnail);

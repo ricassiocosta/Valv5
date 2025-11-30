@@ -156,17 +156,14 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             holder.binding.imgType.setVisibility(View.VISIBLE);
             int drawableId;
             if (galleryFile.isGif() && isWebpFile) {
-                // WebP animado usa ícone específico de WebP
                 drawableId = R.drawable.ic_round_webp_24;
             } else if (galleryFile.isGif()) {
-                // GIF normal usa ícone de GIF
                 drawableId = R.drawable.ic_round_gif_24;
             } else if (galleryFile.isVideo()) {
                 drawableId = R.drawable.ic_outline_video_file_24;
             } else if (galleryFile.isText()) {
                 drawableId = R.drawable.outline_text_snippet_24;
             } else if (galleryFile.isImage() && isWebpFile) {
-                // WebP estático também usa ícone de WebP
                 drawableId = R.drawable.ic_round_webp_24;
             } else {
                 drawableId = R.drawable.ic_round_folder_open_24;
@@ -278,7 +275,6 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                 if (originalFilename != null && originalFilename.toLowerCase().endsWith(".webp")) {
                     InputStream decryptedStream = streams.getInputStream();
                     if (decryptedStream != null) {
-                        // It's important to wrap the stream in a BufferedInputStream to support mark/reset
                         InputStream bufferedDecryptedStream = new BufferedInputStream(decryptedStream);
                         boolean isAnimated = Encryption.isAnimatedWebp(bufferedDecryptedStream);
                         galleryFile.setFileTypeFromContent(isAnimated);
@@ -288,7 +284,6 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                 FragmentActivity currentContext = weakReference.get();
                 if (currentContext != null && !currentContext.isDestroyed()) {
                     currentContext.runOnUiThread(() -> {
-                        // Encontra a posição atual do arquivo na lista ao invés de usar holder position
                         int pos = galleryFiles.indexOf(galleryFile);
                         if (pos >= 0) {
                             notifyItemChanged(pos, new Payload(Payload.TYPE_NEW_FILENAME));
@@ -313,7 +308,6 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             FragmentActivity currentContext = weakReference.get();
             if (currentContext != null && !currentContext.isDestroyed()) {
                 currentContext.runOnUiThread(() -> {
-                    // Encontra a posição atual do arquivo na lista ao invés de usar holder position
                     int pos = galleryFiles.indexOf(galleryFile);
                     if (pos >= 0) {
                         galleryViewModel.getOnAdapterItemChanged().onChanged(pos);
@@ -392,9 +386,6 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                             }
                             notifyItemRangeChanged(minPos, 1 + (maxPos - minPos), new Payload(Payload.TYPE_SELECT_ALL));
                         }
-                        //if (context instanceof GalleryDirectoryActivity activity) {
-                        //    activity.onSelectionChanged(selectedFiles.size());
-                        //}
                     } else {
                         holder.binding.layout.performClick();
                     }
@@ -430,17 +421,14 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                         holder.binding.imgType.setVisibility(View.VISIBLE);
                         int drawableId;
                         if (galleryFile.isGif() && isWebpFile) {
-                            // WebP animado usa ícone específico de WebP
                             drawableId = R.drawable.ic_round_webp_24;
                         } else if (galleryFile.isGif()) {
-                            // GIF normal usa ícone de GIF
                             drawableId = R.drawable.ic_round_gif_24;
                         } else if (galleryFile.isVideo()) {
                             drawableId = R.drawable.ic_outline_video_file_24;
                         } else if (galleryFile.isText()) {
                             drawableId = R.drawable.outline_text_snippet_24;
                         } else if (galleryFile.isImage() && isWebpFile) {
-                            // WebP estático também usa ícone de WebP
                             drawableId = R.drawable.ic_round_webp_24;
                         } else {
                             drawableId = R.drawable.ic_round_folder_open_24;
@@ -525,9 +513,6 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             }
             notifyItemRangeChanged(0, galleryFiles.size(), new Payload(Payload.TYPE_SELECT_ALL));
         }
-        //if (weakReference.get() instanceof GalleryDirectoryActivity activity) {
-        //    activity.onSelectionChanged(selectedFiles.size());
-        //}
     }
 
     public boolean toggleFilenames() {
@@ -554,18 +539,15 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                         FileType realType = FileType.fromTypeAndVersion(metadata.fileType, 5);
                         FileType oldType = galleryFile.getFileType();
                         
-                        // Não sobrescreve tipos de WebP que foram determinados pela análise de conteúdo
                         String originalName = galleryFile.getOriginalName();
                         boolean isWebp = originalName != null && originalName.toLowerCase().endsWith(".webp");
                         
                         if (!isWebp || oldType == FileType.DIRECTORY) {
-                            // Apenas atualiza se não é WebP ou se não foi determinado corretamente
                             galleryFile.setOverriddenFileType(realType);
                             typeChanged[0] = oldType != realType;
                         }
                     }
                     
-                    // Update original name if available
                     if (metadata.originalName != null && !metadata.originalName.isEmpty()) {
                         galleryFile.setOriginalName(metadata.originalName);
                     }
@@ -579,8 +561,6 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                                         .load(metadata.thumbUri)
                                         .apply(GlideStuff.getRequestOptions(useDiskCache))
                                         .into(holder.binding.imageView);
-                                
-                                // Se o tipo de arquivo mudou, atualiza o ícone também
                                 if (typeChanged[0]) {
                                     int pos = galleryFiles.indexOf(galleryFile);
                                     if (pos >= 0) {
@@ -597,8 +577,6 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                                         .load(R.drawable.outline_broken_image_24)
                                         .centerInside()
                                         .into(holder.binding.imageView);
-                                
-                                // Se o tipo de arquivo mudou, atualiza o ícone também
                                 if (typeChanged[0]) {
                                     int pos = galleryFiles.indexOf(galleryFile);
                                     if (pos >= 0) {
@@ -616,8 +594,6 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                                     .load(R.drawable.outline_broken_image_24)
                                     .centerInside()
                                     .into(holder.binding.imageView);
-                            
-                            // Mesmo sem metadata válida, se algo mudou, atualiza o item
                             int pos = galleryFiles.indexOf(galleryFile);
                             if (pos >= 0) {
                                 notifyItemChanged(pos, new Payload(Payload.TYPE_NEW_FILENAME));
@@ -634,8 +610,6 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                                 .load(R.drawable.outline_broken_image_24)
                                 .centerInside()
                                 .into(holder.binding.imageView);
-                        
-                        // Mesmo com erro, tenta atualizar o item
                         int pos = galleryFiles.indexOf(galleryFile);
                         if (pos >= 0) {
                             notifyItemChanged(pos, new Payload(Payload.TYPE_NEW_FILENAME));
