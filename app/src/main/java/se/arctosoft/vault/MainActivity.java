@@ -235,13 +235,16 @@ public class MainActivity extends AppCompatActivity {
                     
                     // Se a funcionalidade de retornar ao último app estiver habilitada
                     if (settings.returnToLastApp()) {
-                        // Executa o retorno ao último app após um pequeno delay para garantir que o lock seja processado
+                        // Retorna ao último app ANTES de finalizar
+                        returnToLastApp();
+                        // Finaliza após um delay maior para garantir que já mudou de app
                         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                            returnToLastApp();
-                        }, 200);
+                            finish();
+                        }, 500);
+                    } else {
+                        // Se não vai retornar ao último app, pode finalizar imediatamente
+                        finish();
                     }
-                    
-                    finish();
                 }
             }
         }

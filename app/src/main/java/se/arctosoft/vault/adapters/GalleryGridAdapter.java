@@ -142,7 +142,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
     @Override
     public void onBindViewHolder(@NonNull GalleryGridViewHolder holder, int position) {
         FragmentActivity context = weakReference.get();
-        if (context == null || context.isFinishing() || context.isDestroyed()) {
+        if (context == null || context.isDestroyed()) {
             return;
         }
         GalleryFile galleryFile = galleryFiles.get(position);
@@ -189,7 +189,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             holder.binding.imageView.setVisibility(View.VISIBLE);
             galleryFile.findFilesInDirectory(context, () -> {
                 FragmentActivity currentContext = weakReference.get();
-                if (currentContext != null && !currentContext.isFinishing() && !currentContext.isDestroyed()) {
+                if (currentContext != null && !currentContext.isDestroyed()) {
                     currentContext.runOnUiThread(() -> {
                         int bindingAdapterPosition = holder.getBindingAdapterPosition();
                         if (bindingAdapterPosition != RecyclerView.NO_POSITION) {
@@ -286,7 +286,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                 }
 
                 FragmentActivity currentContext = weakReference.get();
-                if (currentContext != null && !currentContext.isFinishing() && !currentContext.isDestroyed()) {
+                if (currentContext != null && !currentContext.isDestroyed()) {
                     currentContext.runOnUiThread(() -> {
                         // Encontra a posição atual do arquivo na lista ao invés de usar holder position
                         int pos = galleryFiles.indexOf(galleryFile);
@@ -311,7 +311,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             String text = Encryption.readEncryptedTextFromUri(galleryFile.getUri(), context, galleryFile.getVersion(), password.getPassword());
             galleryFile.setText(text);
             FragmentActivity currentContext = weakReference.get();
-            if (currentContext != null && !currentContext.isFinishing() && !currentContext.isDestroyed()) {
+            if (currentContext != null && !currentContext.isDestroyed()) {
                 currentContext.runOnUiThread(() -> {
                     // Encontra a posição atual do arquivo na lista ao invés de usar holder position
                     int pos = galleryFiles.indexOf(galleryFile);
@@ -420,7 +420,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                     found = true;
                 } else if (payload.type == Payload.TYPE_NEW_FILENAME) {
                     FragmentActivity context = weakReference.get();
-                    if (context == null || context.isFinishing() || context.isDestroyed()) {
+                    if (context == null || context.isDestroyed()) {
                         return;
                     }
                     GalleryFile galleryFile = galleryFiles.get(position);
@@ -573,7 +573,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                     if (metadata.thumbUri != null) {
                         galleryFile.setThumbUri(metadata.thumbUri);
                         FragmentActivity currentContext = weakReference.get();
-                        if (currentContext != null && !currentContext.isFinishing() && !currentContext.isDestroyed()) {
+                        if (currentContext != null && !currentContext.isDestroyed()) {
                             currentContext.runOnUiThread(() -> {
                                 Glide.with(currentContext)
                                         .load(metadata.thumbUri)
@@ -591,7 +591,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                         }
                     } else {
                         FragmentActivity currentContext = weakReference.get();
-                        if (currentContext != null && !currentContext.isFinishing() && !currentContext.isDestroyed()) {
+                        if (currentContext != null && !currentContext.isDestroyed()) {
                             currentContext.runOnUiThread(() -> {
                                 Glide.with(currentContext)
                                         .load(R.drawable.outline_broken_image_24)
@@ -610,7 +610,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                     }
                 } else {
                     FragmentActivity currentContext = weakReference.get();
-                    if (currentContext != null && !currentContext.isFinishing() && !currentContext.isDestroyed()) {
+                    if (currentContext != null && !currentContext.isDestroyed()) {
                         currentContext.runOnUiThread(() -> {
                             Glide.with(currentContext)
                                     .load(R.drawable.outline_broken_image_24)
@@ -628,7 +628,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             } catch (Exception e) {
                 e.printStackTrace();
                 FragmentActivity currentContext = weakReference.get();
-                if (currentContext != null && !currentContext.isFinishing() && !currentContext.isDestroyed()) {
+                if (currentContext != null && !currentContext.isDestroyed()) {
                     currentContext.runOnUiThread(() -> {
                         Glide.with(currentContext)
                                 .load(R.drawable.outline_broken_image_24)
