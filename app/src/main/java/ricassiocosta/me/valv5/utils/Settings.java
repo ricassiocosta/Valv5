@@ -49,6 +49,7 @@ public class Settings {
     public static final String PREF_ENCRYPTION_ITERATION_COUNT = "encryption_iteration_count";
     public static final String PREF_ENCRYPTION_USE_DISK_CACHE = "encryption_use_disk_cache";
     public static final String PREF_ENCRYPTION_DELETE_BY_DEFAULT = "encryption_delete_by_default";
+    public static final String PREF_ENCRYPTION_USE_ARGON2 = "encryption_use_argon2";
 
     public static final String PREF_APP_SECURE = "app_secure";
     public static final String PREF_APP_EDIT_FOLDERS = "app_edit_folders";
@@ -87,6 +88,22 @@ public class Settings {
 
     public void setIterationCount(int iterationCount) {
         getSharedPrefsEditor().putInt(PREF_ENCRYPTION_ITERATION_COUNT, iterationCount).apply();
+    }
+
+    /**
+     * Check if Argon2id should be used for key derivation instead of PBKDF2.
+     * Argon2id is more resistant to GPU/ASIC attacks but uses more memory.
+     * Default: true (use Argon2id for new files)
+     */
+    public boolean useArgon2() {
+        return getSharedPrefs().getBoolean(PREF_ENCRYPTION_USE_ARGON2, true);
+    }
+
+    /**
+     * Set whether to use Argon2id for key derivation.
+     */
+    public void setUseArgon2(boolean useArgon2) {
+        getSharedPrefsEditor().putBoolean(PREF_ENCRYPTION_USE_ARGON2, useArgon2).apply();
     }
 
     public boolean useDiskCache() {

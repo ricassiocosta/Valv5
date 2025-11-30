@@ -81,7 +81,13 @@ import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.SecretKeySpec;
 import javax.security.auth.DestroyFailedException;
+
+import org.signal.argon2.Argon2;
+import org.signal.argon2.MemoryCost;
+import org.signal.argon2.Type;
+import org.signal.argon2.Version;
 
 import ricassiocosta.me.valv5.data.DirHash;
 import ricassiocosta.me.valv5.data.FileType;
@@ -103,8 +109,20 @@ public class Encryption {
     private static final int CHECK_LENGTH = 12;
     private static final int POLY1305_TAG_LENGTH = 16;
     
-    // Flag to indicate AEAD mode in iteration count (high bit)
+    // Flags stored in iteration count field (high bits)
+    // Bit 31 (0x80000000): AEAD mode (ChaCha20-Poly1305)
+    // Bit 30 (0x40000000): Argon2id KDF (instead of PBKDF2)
     private static final int AEAD_FLAG = 0x80000000;
+    private static final int ARGON2_FLAG = 0x40000000;
+    private static final int FLAGS_MASK = 0xC0000000;  // Both flags
+    private static final int ITERATION_MASK = 0x3FFFFFFF;  // Iteration count (30 bits)
+    
+    // Argon2id parameters (OWASP recommendations for high-security)
+    // These provide strong protection against GPU/ASIC attacks
+    private static final int ARGON2_MEMORY_KB = 65536;  // 64 MB
+    private static final int ARGON2_ITERATIONS = 3;      // Time cost
+    private static final int ARGON2_PARALLELISM = 4;     // Parallel threads
+    
     private static final int INTEGER_LENGTH = 4;
     public static final int DIR_HASH_LENGTH = 8;
     private static final String JSON_ORIGINAL_NAME = "originalName";
@@ -702,9 +720,15 @@ public class Encryption {
         SecureRandom sr = SecureRandom.getInstanceStrong();
         Settings settings = Settings.getInstance(context);
         final int ITERATION_COUNT = settings.getIterationCount();
+        final boolean useArgon2 = settings.useArgon2();
         
-        // Set AEAD flag in iteration count
-        final int storedIterationCount = ITERATION_COUNT | AEAD_FLAG;
+        // Set flags in iteration count:
+        // - AEAD_FLAG: Always set for new files (ChaCha20-Poly1305)
+        // - ARGON2_FLAG: Set if using Argon2id instead of PBKDF2
+        int storedIterationCount = ITERATION_COUNT | AEAD_FLAG;
+        if (useArgon2) {
+            storedIterationCount |= ARGON2_FLAG;
+        }
 
         // Generate header components
         byte[] versionBytes = toByteArray(ENCRYPTION_VERSION_5);
@@ -714,10 +738,8 @@ public class Encryption {
         sr.nextBytes(salt);
         sr.nextBytes(ivBytes);
 
-        // Derive key
-        SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance(KEY_ALGORITHM);
-        KeySpec keySpec = new PBEKeySpec(password, salt, ITERATION_COUNT, KEY_LENGTH);
-        SecretKey secretKey = secretKeyFactory.generateSecret(keySpec);
+        // Derive key using the appropriate KDF
+        SecretKey secretKey = deriveKey(password, salt, ITERATION_COUNT, useArgon2);
 
         // Build plaintext content
         ByteArrayOutputStream plaintextBuffer = new ByteArrayOutputStream();
@@ -885,14 +907,13 @@ public class Encryption {
         final int DETECTED_VERSION = fromByteArray(versionBytes);
         final int rawIterationCount = fromByteArray(iterationCountBytes);
         
-        // Check if AEAD mode (high bit set)
+        // Extract flags from iteration count
         final boolean useAEAD = (rawIterationCount & AEAD_FLAG) != 0;
-        final int ITERATION_COUNT = rawIterationCount & 0x7FFFFFFF; // Clear AEAD flag
+        final boolean useArgon2 = (rawIterationCount & ARGON2_FLAG) != 0;
+        final int ITERATION_COUNT = rawIterationCount & ITERATION_MASK; // Clear all flags
 
-        // Derive key
-        SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance(KEY_ALGORITHM);
-        KeySpec keySpec = new PBEKeySpec(password, salt, ITERATION_COUNT, KEY_LENGTH);
-        SecretKey secretKey = secretKeyFactory.generateSecret(keySpec);
+        // Derive key using the appropriate KDF
+        SecretKey secretKey = deriveKey(password, salt, ITERATION_COUNT, useArgon2);
 
         if (useAEAD) {
             // AEAD mode: ChaCha20-Poly1305
@@ -1168,6 +1189,68 @@ public class Encryption {
 
     public static int fromByteArray(byte[] bytes) {
         return bytes[0] << 24 | (bytes[1] & 0xFF) << 16 | (bytes[2] & 0xFF) << 8 | (bytes[3] & 0xFF);
+    }
+
+    /**
+     * Derive encryption key from password using the appropriate KDF.
+     * 
+     * @param password User password
+     * @param salt Random salt (16 bytes)
+     * @param iterationCount For PBKDF2: number of iterations. For Argon2id: ignored (uses fixed params)
+     * @param useArgon2 If true, use Argon2id. If false, use PBKDF2-HMAC-SHA512.
+     * @return SecretKey for encryption/decryption
+     */
+    private static SecretKey deriveKey(char[] password, byte[] salt, int iterationCount, boolean useArgon2) 
+            throws GeneralSecurityException {
+        byte[] keyBytes;
+        
+        if (useArgon2) {
+            // Argon2id - memory-hard KDF resistant to GPU/ASIC attacks
+            // Convert char[] to byte[] for Argon2
+            byte[] passwordBytes = charArrayToBytes(password);
+            try {
+                Argon2 argon2 = new Argon2.Builder(Version.V13)
+                        .type(Type.Argon2id)
+                        .memoryCost(MemoryCost.KiB(ARGON2_MEMORY_KB))
+                        .parallelism(ARGON2_PARALLELISM)
+                        .iterations(ARGON2_ITERATIONS)
+                        .hashLength(KEY_LENGTH / 8)  // 32 bytes
+                        .build();
+                
+                Argon2.Result result = argon2.hash(passwordBytes, salt);
+                keyBytes = result.getHash();
+            } catch (org.signal.argon2.Argon2Exception e) {
+                throw new GeneralSecurityException("Argon2 key derivation failed", e);
+            } finally {
+                // Clear password bytes from memory
+                Arrays.fill(passwordBytes, (byte) 0);
+            }
+        } else {
+            // PBKDF2-HMAC-SHA512 - legacy/fallback KDF
+            SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance(KEY_ALGORITHM);
+            KeySpec keySpec = new PBEKeySpec(password, salt, iterationCount, KEY_LENGTH);
+            SecretKey tempKey = secretKeyFactory.generateSecret(keySpec);
+            keyBytes = tempKey.getEncoded();
+        }
+        
+        return new SecretKeySpec(keyBytes, "ChaCha20");
+    }
+    
+    /**
+     * Convert char[] password to byte[] using UTF-8 encoding.
+     * The returned array should be cleared after use.
+     */
+    private static byte[] charArrayToBytes(char[] chars) {
+        CharBuffer charBuffer = CharBuffer.wrap(chars);
+        ByteBuffer byteBuffer = StandardCharsets.UTF_8.encode(charBuffer);
+        byte[] bytes = new byte[byteBuffer.remaining()];
+        byteBuffer.get(bytes);
+        // Clear the buffer
+        byteBuffer.clear();
+        while (byteBuffer.hasRemaining()) {
+            byteBuffer.put((byte) 0);
+        }
+        return bytes;
     }
 
     @NonNull

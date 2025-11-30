@@ -84,6 +84,9 @@ dependencies {
     implementation(libs.preferences)
     annotationProcessor(libs.glide.annotation)
 
+    // Argon2id for password hashing (Signal's implementation)
+    implementation(libs.argon2)
+
     implementation(libs.glide)
     implementation(libs.about.libraries)
     implementation(libs.about.libraries.compose)
