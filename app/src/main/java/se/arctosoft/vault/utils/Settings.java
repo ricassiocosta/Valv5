@@ -181,7 +181,6 @@ public class Settings {
         StoredDirectory newDir = new StoredDirectory(uri, asRootDir);
         boolean reordered = false;
         if (directories.contains(newDir)) {
-            Log.d(TAG, "addGalleryDirectory: uri already saved");
             if (directories.remove(newDir)) {
                 directories.add(0, newDir);
                 reordered = true;

@@ -71,12 +71,10 @@ public class SectionReader {
     @Nullable
     public SectionInfo readNextSection() throws IOException {
         if (endMarkerFound) {
-            android.util.Log.d(TAG, "readNextSection: end marker already found");
             return null;
         }
 
         int typeByte = encryptedIn.read();
-        android.util.Log.d(TAG, "readNextSection: typeByte=" + typeByte + " (0x" + String.format("%02X", typeByte) + ")");
         if (typeByte == -1) {
             throw new EOFException("Unexpected end of stream while reading section type");
         }
@@ -86,7 +84,6 @@ public class SectionReader {
         // Check for END marker
         if (sectionType == SECTION_TYPE_END) {
             endMarkerFound = true;
-            android.util.Log.d(TAG, "readNextSection: END marker found");
             return null;
         }
 
@@ -98,7 +95,6 @@ public class SectionReader {
 
         // Read size (4-byte big-endian)
         int size = readSize();
-        android.util.Log.d(TAG, "readNextSection: type=0x" + String.format("%02X", sectionType) + ", size=" + size);
         if (size < 0) {
             throw new IOException("Invalid section size: " + size);
         }
@@ -152,7 +148,6 @@ public class SectionReader {
      * @throws IOException If skipping fails
      */
     public void skipSectionContent(int size) throws IOException {
-        android.util.Log.d(TAG, "skipSectionContent: skipping " + size + " bytes");
         byte[] buffer = new byte[8192];
         long remaining = size;
         
@@ -164,7 +159,6 @@ public class SectionReader {
             }
             remaining -= bytesRead;
         }
-        android.util.Log.d(TAG, "skipSectionContent: successfully skipped " + size + " bytes");
     }
 
     /**

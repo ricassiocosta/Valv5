@@ -131,8 +131,6 @@ public class SectionWriter {
             throw new IOException("Section size exceeds maximum allowed: " + contentSize);
         }
 
-        android.util.Log.d(TAG, "writeSection: type=0x" + String.format("%02X", sectionType) + ", size=" + contentSize);
-
         // Write section type marker
         encryptedOut.write(sectionType);
 
@@ -148,8 +146,6 @@ public class SectionWriter {
             encryptedOut.write(buffer, 0, bytesRead);
             bytesWritten += bytesRead;
         }
-
-        android.util.Log.d(TAG, "writeSection: bytesWritten=" + bytesWritten);
 
         if (bytesWritten != contentSize) {
             throw new IOException("Expected " + contentSize + " bytes but got " + bytesWritten);

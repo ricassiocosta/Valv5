@@ -83,12 +83,9 @@ public class CompositeStreams {
      */
     @NonNull
     public InputStream getFileSectionStreaming() throws IOException {
-        android.util.Log.d(TAG, "getFileSectionStreaming: called");
-        
         if (fileInfo == null) {
             // Read FILE section header
             SectionReader.SectionInfo info = sectionReader.readNextSection();
-            android.util.Log.d(TAG, "getFileSectionStreaming: read section info=" + info);
             if (info == null || !info.isFileSection()) {
                 throw new IOException("File section not found in composite file, got: " + info);
             }
@@ -97,7 +94,6 @@ public class CompositeStreams {
 
         // Return a LimitedInputStream that reads from encryptedIn with size limit
         // This allows streaming without loading entire file into memory
-        android.util.Log.d(TAG, "getFileSectionStreaming: returning LimitedInputStream for " + fileInfo.size + " bytes");
         fileContentConsumed = true;
         return new LimitedInputStream(encryptedIn, fileInfo.size);
     }
@@ -113,8 +109,6 @@ public class CompositeStreams {
      */
     @NonNull
     public InputStream getFileSection() throws IOException {
-        android.util.Log.d(TAG, "getFileSection: called, cachedFileContent=" + (cachedFileContent != null ? cachedFileContent.length + " bytes" : "null"));
-        
         // Return cached content if available
         if (cachedFileContent != null) {
             return new ByteArrayInputStream(cachedFileContent);
@@ -123,7 +117,6 @@ public class CompositeStreams {
         if (fileInfo == null) {
             // Read FILE section header
             SectionReader.SectionInfo info = sectionReader.readNextSection();
-            android.util.Log.d(TAG, "getFileSection: read section info=" + info);
             if (info == null || !info.isFileSection()) {
                 throw new IOException("File section not found in composite file, got: " + info);
             }
@@ -131,7 +124,6 @@ public class CompositeStreams {
         }
 
         // Read and cache the entire file content
-        android.util.Log.d(TAG, "getFileSection: reading " + fileInfo.size + " bytes into cache");
         cachedFileContent = new byte[(int) fileInfo.size];
         int totalRead = 0;
         while (totalRead < fileInfo.size) {
@@ -141,9 +133,8 @@ public class CompositeStreams {
             }
             totalRead += read;
         }
-        fileContentConsumed = true;
-        android.util.Log.d(TAG, "getFileSection: cached " + totalRead + " bytes");
 
+        fileContentConsumed = true;
         return new ByteArrayInputStream(cachedFileContent);
     }
 
@@ -154,13 +145,10 @@ public class CompositeStreams {
      * @throws IOException If reading fails
      */
     public boolean hasThumbnailSection() throws IOException {
-        android.util.Log.d(TAG, "hasThumbnailSection: thumbnailInfo=" + thumbnailInfo + ", thumbnailHeaderRead=" + thumbnailHeaderRead);
         if (thumbnailInfo == null && !thumbnailHeaderRead) {
             // Read FILE header if not already done
             if (fileInfo == null) {
-                android.util.Log.d(TAG, "hasThumbnailSection: reading FILE header");
                 SectionReader.SectionInfo info = sectionReader.readNextSection();
-                android.util.Log.d(TAG, "hasThumbnailSection: FILE section info=" + info);
                 if (info != null && info.isFileSection()) {
                     fileInfo = info;
                 } else {
@@ -172,22 +160,18 @@ public class CompositeStreams {
 
             // Skip FILE content if not yet consumed
             if (!fileContentConsumed && fileInfo != null) {
-                android.util.Log.d(TAG, "hasThumbnailSection: skipping FILE content, size=" + fileInfo.size);
                 sectionReader.skipSectionContent(fileInfo.size);
                 fileContentConsumed = true;  // Mark as consumed after skip
             }
 
             // Read next header
-            android.util.Log.d(TAG, "hasThumbnailSection: reading THUMBNAIL header");
             SectionReader.SectionInfo info = sectionReader.readNextSection();
-            android.util.Log.d(TAG, "hasThumbnailSection: next section info=" + info);
             thumbnailHeaderRead = true;
             if (info != null && info.isThumbnailSection()) {
                 thumbnailInfo = info;
             }
         }
         
-        android.util.Log.d(TAG, "hasThumbnailSection: returning " + (thumbnailInfo != null));
         return thumbnailInfo != null;
     }
 

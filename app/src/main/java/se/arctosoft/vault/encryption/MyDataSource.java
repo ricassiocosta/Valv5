@@ -60,11 +60,9 @@ public class MyDataSource implements DataSource {
     @Override
     public long open(@NonNull DataSpec dataSpec) throws IOException {
         uri = dataSpec.uri;
-        Log.d(TAG, "open: uri=" + uri + ", version=" + version);
         try {
             InputStream fileStream = context.getContentResolver().openInputStream(uri);
             streams = Encryption.getCipherInputStream(fileStream, password.getPassword(), false, version);
-            Log.d(TAG, "open: streams created, compositeStreams=" + (streams.compositeStreams != null));
         } catch (GeneralSecurityException | InvalidPasswordException | JSONException e) {
             e.printStackTrace();
             Log.e(TAG, "open error", e);
@@ -74,16 +72,13 @@ public class MyDataSource implements DataSource {
         // Use streaming for V5 to avoid loading entire file into memory
         // For V1-V4, uses the same input stream
         cachedInputStream = streams.getInputStreamStreaming();
-        Log.d(TAG, "open: cachedInputStream=" + cachedInputStream);
         if (cachedInputStream == null) {
             Log.e(TAG, "open: inputStream is null!");
             return 0;
         }
 
         if (dataSpec.position != 0) {
-            Log.d(TAG, "open: skipping " + dataSpec.position + " bytes");
             long skipped = forceSkip(dataSpec.position, cachedInputStream);
-            Log.d(TAG, "open: skipped " + skipped + " bytes");
         }
         return dataSpec.length;
     }
@@ -113,7 +108,6 @@ public class MyDataSource implements DataSource {
             return -1;
         }
         int bytesRead = cachedInputStream.read(buffer, offset, length);
-        Log.d(TAG, "read: requested=" + length + ", got=" + bytesRead);
         return bytesRead;
     }
 
@@ -125,7 +119,6 @@ public class MyDataSource implements DataSource {
 
     @Override
     public void close() {
-        Log.d(TAG, "close: ");
         if (streams != null) {
             streams.close();
         }

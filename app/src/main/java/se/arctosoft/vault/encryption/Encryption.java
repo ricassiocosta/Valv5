@@ -845,24 +845,19 @@ public class Encryption {
 
         // V5: Return CompositeStreams for V5 files
         if (DETECTED_VERSION >= ENCRYPTION_VERSION_5) {
-            Log.d(TAG, "getCipherInputStream: Detected V5 file, version=" + DETECTED_VERSION);
             // V5 files have sections instead of plaintext metadata
             // Skip the newline after header
             int newline1 = cipherInputStream.read();
-            Log.d(TAG, "getCipherInputStream: first newline byte=" + newline1);
             if (newline1 != 0x0A) {
                 throw new IOException("Not valid V5 file, expected 0x0A but got 0x" + String.format("%02X", newline1));
             }
 
             // Read JSON metadata
             byte[] jsonBytes = readUntilNewline(cipherInputStream);
-            Log.d(TAG, "getCipherInputStream: JSON bytes length=" + jsonBytes.length);
             String jsonStr = new String(jsonBytes, StandardCharsets.UTF_8);
-            Log.d(TAG, "getCipherInputStream: JSON=" + jsonStr);
             JSONObject json = new JSONObject(jsonStr);
             String originalName = json.has(JSON_ORIGINAL_NAME) ? json.getString(JSON_ORIGINAL_NAME) : "";
             int fileType = json.has(JSON_FILE_TYPE) ? json.getInt(JSON_FILE_TYPE) : -1;
-            Log.d(TAG, "getCipherInputStream: originalName=" + originalName + ", fileType=" + fileType);
 
             // Create CompositeStreams wrapper for reading V5 sections
             CompositeStreams compositeStreams = new CompositeStreams(cipherInputStream);
@@ -870,7 +865,6 @@ public class Encryption {
             // Store metadata in a custom Streams object for compatibility
             Streams streams = new Streams(cipherInputStream, secretKey, originalName, fileType, ContentType.FILE, null);
             streams.compositeStreams = compositeStreams;
-            Log.d(TAG, "getCipherInputStream: V5 CompositeStreams created successfully");
             return streams;
         }
 

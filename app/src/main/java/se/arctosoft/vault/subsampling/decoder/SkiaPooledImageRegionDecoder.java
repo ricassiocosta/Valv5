@@ -177,30 +177,22 @@ public class SkiaPooledImageRegionDecoder implements ImageRegionDecoder {
         try {
             ContentResolver contentResolver = context.getContentResolver();
             streams = Encryption.getCipherInputStream(contentResolver.openInputStream(uri), password, false, version);
-            Log.d(TAG, "initialiseDecoder: streams created, compositeStreams=" + (streams.compositeStreams != null));
             
             // For V5 (detected by compositeStreams presence), use getFileBytes() 
             // to get the complete file content.
             InputStream decoderInput;
             if (streams.compositeStreams != null) {
-                Log.d(TAG, "initialiseDecoder: V5 file detected, calling getFileBytes()");
                 byte[] fileBytes = streams.getFileBytes();
-                Log.d(TAG, "initialiseDecoder: fileBytes=" + (fileBytes != null ? fileBytes.length + " bytes" : "null"));
                 if (fileBytes != null) {
                     decoderInput = new ByteArrayInputStream(fileBytes);
-                    Log.d(TAG, "initialiseDecoder: created ByteArrayInputStream for " + fileBytes.length + " bytes");
                 } else {
-                    Log.e(TAG, "initialiseDecoder: Failed to read V5 file bytes!");
                     throw new IOException("Failed to read V5 file bytes for pooled region decoder");
                 }
             } else {
-                Log.d(TAG, "initialiseDecoder: V1-V4 file, using getInputStream()");
                 decoderInput = streams.getInputStream();
             }
             
-            Log.d(TAG, "initialiseDecoder: calling BitmapRegionDecoder.newInstance()");
             decoder = BitmapRegionDecoder.newInstance(decoderInput, false);
-            Log.d(TAG, "initialiseDecoder: decoder created successfully, size=" + decoder.getWidth() + "x" + decoder.getHeight());
         } catch (Exception e) {
             Log.e(TAG, "initialiseDecoder: Exception occurred", e);
             throw e;

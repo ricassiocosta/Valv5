@@ -439,7 +439,6 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
     }
 
     private void loadImage(GalleryFile galleryFile, GalleryPagerViewHolder.GalleryPagerImageViewHolder holder, FragmentActivity context) {
-        Log.d(TAG, "loadImage: " + galleryFile.getEncryptedName() + ", version=" + galleryFile.getVersion() + ", orientation=" + galleryFile.getOrientation());
         if (galleryFile.getOrientation() != -1) {
             holder.binding.imageView.setOrientation(galleryFile.getOrientation());
             holder.binding.imageView.setImage(ImageSource.uri(galleryFile.getUri(), password.getPassword(), galleryFile.getVersion()));
@@ -450,13 +449,10 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
                 try {
                     ContentResolver contentResolver = context.getContentResolver();
                     streams = Encryption.getCipherInputStream(contentResolver.openInputStream(galleryFile.getUri()), password.getPassword(), false, galleryFile.getVersion());
-                    Log.d(TAG, "loadImage: streams created, compositeStreams=" + (streams.compositeStreams != null));
                     InputStream is = streams.getInputStream();
-                    Log.d(TAG, "loadImage: inputStream=" + is);
                     if (is != null) {
                         ExifInterface exifInterface = new ExifInterface(is);
                         orientation = exifInterface.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
-                        Log.d(TAG, "loadImage: exif orientation=" + orientation);
                     }
                     if (orientation == ExifInterface.ORIENTATION_UNDEFINED) {
                         orientation = -1;
@@ -500,7 +496,6 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
     }
 
     private void loadGif(GalleryFile galleryFile, GalleryPagerViewHolder.GalleryPagerGifViewHolder holder, FragmentActivity context) {
-        Log.d("GalleryPagerAdapter", "loadGif: uri=" + galleryFile.getUri() + ", version=" + galleryFile.getVersion());
         var glideRequest = Glide.with(context);
 
         if (galleryFile.getOriginalName() != null && galleryFile.getOriginalName().toLowerCase().endsWith(".webp")) {

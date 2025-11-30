@@ -196,7 +196,6 @@ public class MainActivity extends AppCompatActivity {
             if (launchIntent != null) {
                 launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
                 startActivity(launchIntent);
-                Log.d(TAG, "Opened app: " + packageName);
                 return true;
             }
         } catch (Exception e) {
@@ -210,7 +209,6 @@ public class MainActivity extends AppCompatActivity {
         homeIntent.addCategory(Intent.CATEGORY_HOME);
         homeIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(homeIntent);
-        Log.d(TAG, "Opened home screen");
     }
 
     public class ScreenOffReceiver extends BroadcastReceiver {
@@ -219,7 +217,6 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceive(Context context, Intent intent) {
             if (Objects.equals(intent.getAction(), Intent.ACTION_SCREEN_OFF)) {
-                Log.d(TAG, "onReceive: ACTION_SCREEN_OFF");
                 NavHostFragment navHostFragment = (NavHostFragment) getSupportFragmentManager().findFragmentById(R.id.nav_host_fragment_content_main);
                 assert navHostFragment != null;
                 NavController navController = navHostFragment.getNavController();
