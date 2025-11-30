@@ -32,13 +32,14 @@ import com.bumptech.glide.module.AppGlideModule;
 
 import java.io.InputStream;
 
+import se.arctosoft.vault.data.EncryptedFile;
+
 @GlideModule
 public class MyAppGlideModule extends AppGlideModule {
 
     @Override
     public void registerComponents(@NonNull Context context, @NonNull Glide glide, @NonNull Registry registry) {
-        registry.prepend(Uri.class, InputStream.class, new CipherModelLoaderFactory(context, 1));
-        registry.prepend(Uri.class, InputStream.class, new CipherModelLoaderFactory(context, 2));
+        registry.prepend(EncryptedFile.class, InputStream.class, new EncryptedFileModelLoaderFactory(context));
     }
 
     @Override

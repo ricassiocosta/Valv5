@@ -25,6 +25,7 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.util.Log;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -44,7 +45,10 @@ import java.util.List;
 
 import se.arctosoft.vault.adapters.ImportListAdapter;
 import se.arctosoft.vault.data.GalleryFile;
+import se.arctosoft.vault.data.Password;
 import se.arctosoft.vault.databinding.BottomSheetImportBinding;
+import se.arctosoft.vault.encryption.Encryption;
+import se.arctosoft.vault.exception.InvalidPasswordException;
 import se.arctosoft.vault.utils.FileStuff;
 import se.arctosoft.vault.utils.Settings;
 import se.arctosoft.vault.utils.StringStuff;
@@ -140,7 +144,7 @@ public class BottomSheetImportFragment extends BottomSheetDialogFragment {
             binding.deleteNote.setVisibility(View.GONE);
         }
 
-        importViewModel.setOnImportDoneBottomSheet((destinationUri, sameDirectory, importedCount, failedCount, thumbErrorCount) -> {
+        importViewModel.setOnImportDoneBottomSheet((destinationUri, sameDirectory, importedCount, failedCount, thumbErrorCount, importedFiles) -> {
             clearViewModel();
             dismiss();
         });
@@ -204,6 +208,37 @@ public class BottomSheetImportFragment extends BottomSheetDialogFragment {
     }
 
     private void doImport(long totalBytes, Uri destinationUri, String destinationFolderName, boolean deleteAfterImport, DocumentFile destinationDirectory, boolean sameDirectory) {
+        // New check logic here
+        Context context = getContext();
+        if (context == null) {
+            return;
+        }
+        List<GalleryFile> filesInDest = FileStuff.getFilesInFolder(context, destinationUri, false);
+        if (!filesInDest.isEmpty()) {
+            GalleryFile fileToCheck = null;
+            for (GalleryFile f : filesInDest) {
+                // any file should be encrypted with the same password
+                if (!f.isDirectory()) {
+                    fileToCheck = f;
+                    break;
+                }
+            }
+
+            if (fileToCheck != null) {
+                try {
+                    char[] password = Password.getInstance().getPassword();
+                    Encryption.checkPassword(context, fileToCheck.getUri(), password, fileToCheck.getVersion(), false);
+                } catch (InvalidPasswordException e) {
+                    Toaster.getInstance(context).showLong(context.getString(R.string.import_error_password_mismatch));
+                    return;
+                } catch (Exception e) {
+                    Log.e(TAG, "Error checking password before import", e);
+                    Toaster.getInstance(context).showLong(context.getString(R.string.import_error_folder_check));
+                    return;
+                }
+            }
+        }
+
         importViewModel.getProgressData().setValue(null);
         importViewModel.setDestinationDirectory(destinationDirectory);
         importViewModel.setDestinationFolderName(destinationFolderName);

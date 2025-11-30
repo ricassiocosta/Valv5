@@ -49,10 +49,13 @@ public class Settings {
     public static final String PREF_ENCRYPTION_ITERATION_COUNT = "encryption_iteration_count";
     public static final String PREF_ENCRYPTION_USE_DISK_CACHE = "encryption_use_disk_cache";
     public static final String PREF_ENCRYPTION_DELETE_BY_DEFAULT = "encryption_delete_by_default";
-    public static final String PREF_ENCRYPTION_DISPLAY_DECRYPTABLE_ONLY = "encryption_display_decryptable_only";
+
     public static final String PREF_APP_SECURE = "app_secure";
     public static final String PREF_APP_EDIT_FOLDERS = "app_edit_folders";
     public static final String PREF_APP_EXIT_ON_LOCK = "app_exit_on_lock";
+    public static final String PREF_APP_RETURN_TO_LAST_APP = "app_return_to_last_app";
+    public static final String PREF_APP_LAST_APP_PACKAGE = "app_last_app_package";
+    public static final String PREF_APP_PREFERRED_APP = "app_preferred_app";
     public static final String PREF_APP_BIOMETRICS = "app_biometrics";
     public static final String PREF_APP_BIOMETRICS_DATA = "app_biometrics_data";
 
@@ -79,7 +82,7 @@ public class Settings {
     }
 
     public int getIterationCount() {
-        return getSharedPrefs().getInt(PREF_ENCRYPTION_ITERATION_COUNT, 50000);
+        return getSharedPrefs().getInt(PREF_ENCRYPTION_ITERATION_COUNT, 120000);
     }
 
     public void setIterationCount(int iterationCount) {
@@ -87,7 +90,7 @@ public class Settings {
     }
 
     public boolean useDiskCache() {
-        return getSharedPrefs().getBoolean(PREF_ENCRYPTION_USE_DISK_CACHE, true);
+        return getSharedPrefs().getBoolean(PREF_ENCRYPTION_USE_DISK_CACHE, false);
     }
 
     public void setUseDiskCache(boolean useDiskCache) {
@@ -129,13 +132,9 @@ public class Settings {
         getSharedPrefsEditor().putBoolean(PREF_ENCRYPTION_DELETE_BY_DEFAULT, deleteByDefault).apply();
     }
 
-    public boolean displayDecryptableFilesOnly() {
-        return getSharedPrefs().getBoolean(PREF_ENCRYPTION_DISPLAY_DECRYPTABLE_ONLY, false);
-    }
 
-    public void setDisplayDecryptableFilesOnly(boolean displayDecryptableFilesOnly) {
-        getSharedPrefsEditor().putBoolean(PREF_ENCRYPTION_DISPLAY_DECRYPTABLE_ONLY, displayDecryptableFilesOnly).apply();
-    }
+
+
 
     public boolean isSecureFlag() {
         return getSharedPrefs().getBoolean(PREF_APP_SECURE, true);
@@ -153,12 +152,35 @@ public class Settings {
         getSharedPrefsEditor().putBoolean(PREF_APP_EXIT_ON_LOCK, exitOnLock).apply();
     }
 
+    public boolean returnToLastApp() {
+        return getSharedPrefs().getBoolean(PREF_APP_RETURN_TO_LAST_APP, false);
+    }
+
+    public void setReturnToLastApp(boolean returnToLastApp) {
+        getSharedPrefsEditor().putBoolean(PREF_APP_RETURN_TO_LAST_APP, returnToLastApp).apply();
+    }
+
+    public String getLastAppPackage() {
+        return getSharedPrefs().getString(PREF_APP_LAST_APP_PACKAGE, null);
+    }
+
+    public void setLastAppPackage(String packageName) {
+        getSharedPrefsEditor().putString(PREF_APP_LAST_APP_PACKAGE, packageName).apply();
+    }
+
+    public String getPreferredApp() {
+        return getSharedPrefs().getString(PREF_APP_PREFERRED_APP, null);
+    }
+
+    public void setPreferredApp(String packageName) {
+        getSharedPrefsEditor().putString(PREF_APP_PREFERRED_APP, packageName).apply();
+    }
+
     public void addGalleryDirectory(@NonNull Uri uri, boolean asRootDir, @Nullable IOnDirectoryAdded onDirectoryAdded) {
         List<StoredDirectory> directories = getGalleryDirectories(false);
         StoredDirectory newDir = new StoredDirectory(uri, asRootDir);
         boolean reordered = false;
         if (directories.contains(newDir)) {
-            Log.d(TAG, "addGalleryDirectory: uri already saved");
             if (directories.remove(newDir)) {
                 directories.add(0, newDir);
                 reordered = true;

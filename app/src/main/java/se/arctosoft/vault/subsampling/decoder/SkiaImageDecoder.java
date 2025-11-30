@@ -27,6 +27,10 @@ import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+
 import se.arctosoft.vault.encryption.Encryption;
 import se.arctosoft.vault.subsampling.MySubsamplingScaleImageView;
 
@@ -67,7 +71,23 @@ public class SkiaImageDecoder implements ImageDecoder {
         try {
             ContentResolver contentResolver = context.getContentResolver();
             streams = Encryption.getCipherInputStream(contentResolver.openInputStream(uri), password, false, version);
-            bitmap = BitmapFactory.decodeStream(streams.getInputStream(), null, options);
+            
+            // For V5 (detected by compositeStreams presence), use getFileBytes() 
+            // to get the file content as a byte array.
+            // This ensures the full file is read into memory before decoding.
+            InputStream decoderInput;
+            if (streams.compositeStreams != null) {
+                byte[] fileBytes = streams.getFileBytes();
+                if (fileBytes != null) {
+                    decoderInput = new ByteArrayInputStream(fileBytes);
+                } else {
+                    throw new RuntimeException("Failed to read V5 file bytes for image decoder");
+                }
+            } else {
+                decoderInput = streams.getInputStream();
+            }
+            
+            bitmap = BitmapFactory.decodeStream(decoderInput, null, options);
         } finally {
             if (streams != null) {
                 streams.close();

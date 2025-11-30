@@ -25,7 +25,7 @@
 
         <SwitchPreferenceCompat
             android:key="encryption_use_disk_cache"
-            app:defaultValue="true"
+            app:defaultValue="false"
             app:icon="@drawable/outline_sd_storage_24"
             app:summaryOff="@string/settings_use_disk_cache_summary_off"
             app:summaryOn="@string/settings_use_disk_cache_summary_on"
@@ -40,6 +40,21 @@
             app:title="@string/settings_exit_on_lock_title" />
 
         <SwitchPreferenceCompat
+            android:key="app_return_to_last_app"
+            app:defaultValue="false"
+            app:icon="@drawable/ic_baseline_play_arrow_24"
+            app:summaryOff="@string/settings_return_to_last_app_summary_off"
+            app:summaryOn="@string/settings_return_to_last_app_summary_on"
+            app:title="@string/settings_return_to_last_app_title" />
+
+        <Preference
+            android:key="app_preferred_app"
+            android:dependency="app_return_to_last_app"
+            app:icon="@drawable/round_edit_24"
+            app:summary="@string/settings_preferred_app_summary"
+            app:title="@string/settings_preferred_app_title" />
+
+        <SwitchPreferenceCompat
             android:key="encryption_delete_by_default"
             app:defaultValue="false"
             app:icon="@drawable/ic_outline_delete_forever_24"
@@ -47,13 +62,7 @@
             app:summaryOn="@string/settings_delete_by_default_summary_on"
             app:title="@string/settings_delete_by_default_title" />
 
-        <SwitchPreferenceCompat
-            android:key="encryption_display_decryptable_only"
-            app:defaultValue="false"
-            app:icon="@drawable/outline_hide_image_24"
-            app:summaryOff="@string/settings_display_decryptable_only_summary_off"
-            app:summaryOn="@string/settings_display_decryptable_only_summary_on"
-            app:title="@string/settings_display_decryptable_only_title" />
+
 
     </PreferenceCategory>
 

@@ -19,6 +19,8 @@ import java.util.List;
 import se.arctosoft.vault.data.GalleryFile;
 import se.arctosoft.vault.data.Password;
 import se.arctosoft.vault.data.UniqueLinkedList;
+import se.arctosoft.vault.encryption.Encryption;
+import se.arctosoft.vault.exception.InvalidPasswordException;
 import se.arctosoft.vault.utils.FileStuff;
 import se.arctosoft.vault.utils.Settings;
 
@@ -237,6 +239,33 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
         }
         incrementFolders(1);
         List<GalleryFile> filesInFolder = FileStuff.getFilesInFolder(activity, uri, true);
+
+        // Password check logic starts here
+        if (!filesInFolder.isEmpty()) {
+            GalleryFile fileToCheck = null;
+            for (GalleryFile f : filesInFolder) {
+                if (!f.isDirectory()) {
+                    fileToCheck = f;
+                    break;
+                }
+            }
+
+            if (fileToCheck != null) {
+                try {
+                    char[] password = Password.getInstance().getPassword();
+                    Encryption.checkPassword(activity, fileToCheck.getUri(), password, fileToCheck.getVersion(), false);
+                } catch (InvalidPasswordException e) {
+                    // Password is wrong for this folder, filter out files
+                    filesInFolder.removeIf(f -> !f.isDirectory());
+                } catch (Exception e) {
+                    Log.e(TAG, "Error checking password for folder " + uri, e);
+                    // Treat as wrong password
+                    filesInFolder.removeIf(f -> !f.isDirectory());
+                }
+            }
+        }
+        // Password check logic ends here
+
         for (GalleryFile galleryFile : filesInFolder) {
             if (!isSafe()) {
                 return files;

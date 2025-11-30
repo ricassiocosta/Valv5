@@ -62,6 +62,7 @@ import org.json.JSONException;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.security.GeneralSecurityException;
 import java.util.HashMap;
@@ -75,6 +76,7 @@ import se.arctosoft.vault.adapters.viewholders.GalleryPagerViewHolder;
 import se.arctosoft.vault.data.FileType;
 import se.arctosoft.vault.data.GalleryFile;
 import se.arctosoft.vault.data.Password;
+import se.arctosoft.vault.data.EncryptedFile;
 import se.arctosoft.vault.databinding.AdapterGalleryViewpagerItemBinding;
 import se.arctosoft.vault.databinding.AdapterGalleryViewpagerItemDirectoryBinding;
 import se.arctosoft.vault.databinding.AdapterGalleryViewpagerItemGifBinding;
@@ -288,18 +290,36 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
         }
         if (!galleryFile.isDirectory() && galleryFile.getOriginalName() == null) {
             new Thread(() -> {
+                Encryption.Streams streams = null;
                 try {
-                    String originalFilename = Encryption.getOriginalFilename(context.getContentResolver().openInputStream(galleryFile.getUri()), password.getPassword(), false, galleryFile.getVersion());
+                    InputStream inputStream = context.getContentResolver().openInputStream(galleryFile.getUri());
+                    streams = Encryption.getCipherInputStream(inputStream, password.getPassword(), false, galleryFile.getVersion());
+                    String originalFilename = streams.getOriginalFileName();
                     galleryFile.setOriginalName(originalFilename);
+
+                    if (originalFilename != null && originalFilename.toLowerCase().endsWith(".webp")) {
+                        InputStream decryptedStream = streams.getInputStream();
+                        if (decryptedStream != null) {
+                            // It's important to wrap the stream in a BufferedInputStream to support mark/reset
+                            InputStream bufferedDecryptedStream = new java.io.BufferedInputStream(decryptedStream);
+                            boolean isAnimated = Encryption.isAnimatedWebp(bufferedDecryptedStream);
+                            galleryFile.setFileTypeFromContent(isAnimated);
+                        }
+                    }
+
                     int pos = holder.getBindingAdapterPosition();
                     if (pos == position) {
                         context.runOnUiThread(() -> setName(holder, galleryFile));
                     } else if (pos >= 0 && pos < galleryFiles.size()) {
                         context.runOnUiThread(() -> notifyItemChanged(pos, new GalleryGridAdapter.Payload(GalleryGridAdapter.Payload.TYPE_NEW_FILENAME)));
                     }
-                } catch (FileNotFoundException e) {
+                } catch (Exception e) {
                     e.printStackTrace();
                     galleryFile.setOriginalName("");
+                } finally {
+                    if (streams != null) {
+                        streams.close();
+                    }
                 }
             }).start();
         }
@@ -429,8 +449,11 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
                 try {
                     ContentResolver contentResolver = context.getContentResolver();
                     streams = Encryption.getCipherInputStream(contentResolver.openInputStream(galleryFile.getUri()), password.getPassword(), false, galleryFile.getVersion());
-                    ExifInterface exifInterface = new ExifInterface(streams.getInputStream());
-                    orientation = exifInterface.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+                    InputStream is = streams.getInputStream();
+                    if (is != null) {
+                        ExifInterface exifInterface = new ExifInterface(is);
+                        orientation = exifInterface.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+                    }
                     if (orientation == ExifInterface.ORIENTATION_UNDEFINED) {
                         orientation = -1;
                     } else {
@@ -438,6 +461,7 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
                     }
                 } catch (GeneralSecurityException | InvalidPasswordException | JSONException |
                          IOException e) {
+                    Log.e(TAG, "loadImage: error", e);
                     e.printStackTrace();
                     context.runOnUiThread(() -> {
                         int i = holder.getBindingAdapterPosition();
@@ -472,11 +496,20 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
     }
 
     private void loadGif(GalleryFile galleryFile, GalleryPagerViewHolder.GalleryPagerGifViewHolder holder, FragmentActivity context) {
-        Glide.with(context)
-                //.asGif()
-                .load(galleryFile.getUri())
-                .apply(GlideStuff.getRequestOptions(useDiskCache))
-                .into(holder.binding.gifImageView);
+        var glideRequest = Glide.with(context);
+
+        if (galleryFile.getOriginalName() != null && galleryFile.getOriginalName().toLowerCase().endsWith(".webp")) {
+            glideRequest
+                    .load(new EncryptedFile(galleryFile.getUri(), galleryFile.getVersion()))
+                    .apply(GlideStuff.getRequestOptions(useDiskCache))
+                    .into(holder.binding.gifImageView);
+        } else {
+            glideRequest
+                    .asGif()
+                    .load(new EncryptedFile(galleryFile.getUri(), galleryFile.getVersion()))
+                    .apply(GlideStuff.getRequestOptions(useDiskCache))
+                    .into(holder.binding.gifImageView);
+        }
     }
 
     private void showButtons(GalleryPagerViewHolder holder, boolean show) {
@@ -669,9 +702,13 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
     }
 
     private void saveNote(FragmentActivity context, GalleryFile galleryFile, String text) {
-        DocumentFile createdFile = Encryption.importNoteToDirectory(context, text, FileStuff.getNameWithoutPrefix(galleryFile.getEncryptedName()), currentDirectory, password.getPassword(), galleryFile.getVersion());
-        if (createdFile != null) {
-            galleryFile.setNoteUri(createdFile.getUri());
+        try {
+            DocumentFile createdFile = Encryption.importNoteToDirectory(context, text, FileStuff.getNameWithoutPrefix(galleryFile.getEncryptedName()), currentDirectory, password.getPassword(), galleryFile.getVersion());
+            if (createdFile != null) {
+                galleryFile.setNoteUri(createdFile.getUri());
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "saveNote: Failed to save note", e);
         }
     }
 

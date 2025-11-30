@@ -62,6 +62,8 @@ import se.arctosoft.vault.adapters.GalleryPagerAdapter;
 import se.arctosoft.vault.data.FileType;
 import se.arctosoft.vault.data.GalleryFile;
 import se.arctosoft.vault.data.Password;
+import se.arctosoft.vault.encryption.Encryption;
+import se.arctosoft.vault.exception.InvalidPasswordException;
 import se.arctosoft.vault.databinding.FragmentDirectoryBinding;
 import se.arctosoft.vault.utils.Dialogs;
 import se.arctosoft.vault.utils.FileStuff;
@@ -86,12 +88,10 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     static final int ORDER_BY_SMALLEST = 3;
     static final int ORDER_BY_RANDOM = 4;
     static final int FILTER_ALL = 0;
-    static final int FILTER_IMAGES = FileType.IMAGE_V2.type;
-    static final int FILTER_GIFS = FileType.GIF_V2.type;
-    static final int FILTER_VIDEOS = FileType.VIDEO_V2.type;
-    static final int FILTER_TEXTS = FileType.TEXT_V2.type;
-
-    NavController navController;
+      static final int FILTER_IMAGES = FileType.IMAGE_V5.type;
+      static final int FILTER_GIFS = FileType.GIF_V5.type;
+      static final int FILTER_VIDEOS = FileType.VIDEO_V5.type;
+      static final int FILTER_TEXTS = FileType.TEXT_V5.type;    NavController navController;
     FragmentDirectoryBinding binding;
     PasswordViewModel passwordViewModel;
     GalleryViewModel galleryViewModel;
@@ -198,7 +198,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     }
 
     void initViewModels() {
-        importViewModel.setOnImportDoneFragment((destinationUri, sameDirectory, importedCount, failedCount, thumbErrorCount) -> {
+        importViewModel.setOnImportDoneFragment((destinationUri, sameDirectory, importedCount, failedCount, thumbErrorCount, importedFiles) -> {
             Log.e(TAG, "setOnImportDoneFragment: " + destinationUri + ", " + sameDirectory + ", " + importedCount + ", " + failedCount + ", " + thumbErrorCount);
 
             FragmentActivity activity = getActivity();
@@ -208,20 +208,15 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
             activity.runOnUiThread(() -> {
                 Toaster.getInstance(activity).showLong(getString(R.string.gallery_selected_files_imported, importedCount));
 
-                if (galleryViewModel.isRootDir() && galleryViewModel.getGalleryFiles().isEmpty()) {
-                    settings.addGalleryDirectory(destinationUri, true, null);
-                    addRootFolders();
-                } else if (sameDirectory || (destinationUri != null && galleryViewModel.getCurrentDirectoryUri() != null && destinationUri.toString().equals(galleryViewModel.getCurrentDirectoryUri().toString()))) { // files added to current directory
+                if (sameDirectory) { // files added to current directory
                     synchronized (LOCK) {
-                        int size = galleryViewModel.getGalleryFiles().size();
-                        galleryViewModel.getGalleryFiles().clear();
-                        galleryViewModel.getHiddenFiles().clear();
-                        galleryGridAdapter.notifyItemRangeRemoved(0, size);
-                        galleryPagerAdapter.notifyItemRangeRemoved(0, size);
-                        galleryViewModel.setInitialised(false);
-                        findFilesIn(galleryViewModel.getCurrentDirectoryUri());
+                        int startPos = galleryViewModel.getGalleryFiles().size();
+                        galleryViewModel.getGalleryFiles().addAll(importedFiles);
+                        galleryGridAdapter.notifyItemRangeInserted(startPos, importedFiles.size());
+                        galleryPagerAdapter.notifyItemRangeInserted(startPos, importedFiles.size());
                     }
                 } else {
+                    // a different directory was updated, so we need to find it and refresh it
                     synchronized (LOCK) {
                         for (int i = 0; i < galleryViewModel.getGalleryFiles().size(); i++) {
                             GalleryFile g = galleryViewModel.getGalleryFiles().get(i);
@@ -326,6 +321,33 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                 return;
             }
             List<GalleryFile> galleryFiles = FileStuff.getFilesInFolder(activity, directoryUri, true);
+
+            // New logic starts here
+            if (!galleryFiles.isEmpty()) {
+                GalleryFile fileToCheck = null;
+                for (GalleryFile f : galleryFiles) {
+                    if (!f.isDirectory()) {
+                        fileToCheck = f;
+                        break;
+                    }
+                }
+
+                if (fileToCheck != null) {
+                    try {
+                        char[] password = Password.getInstance().getPassword();
+                        // For v2 files, the isThumb parameter is not used.
+                        Encryption.checkPassword(activity, fileToCheck.getUri(), password, fileToCheck.getVersion(), false);
+                    } catch (InvalidPasswordException e) {
+                        // Silently filter out files, keep sub-directories
+                        galleryFiles.removeIf(galleryFile -> !galleryFile.isDirectory());
+                    } catch (Exception e) {
+                        // Log other errors, and treat as if password was wrong by clearing non-directories
+                        Log.e(TAG, "Error checking password for folder " + directoryUri, e);
+                        galleryFiles.removeIf(galleryFile -> !galleryFile.isDirectory());
+                    }
+                }
+            }
+            // New logic ends here
 
             activity.runOnUiThread(() -> {
                 setLoading(false);

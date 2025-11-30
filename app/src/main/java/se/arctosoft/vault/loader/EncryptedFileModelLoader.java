@@ -19,7 +19,6 @@
 package se.arctosoft.vault.loader;
 
 import android.content.Context;
-import android.net.Uri;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -30,32 +29,23 @@ import com.bumptech.glide.signature.ObjectKey;
 
 import java.io.InputStream;
 
-import se.arctosoft.vault.encryption.Encryption;
+import se.arctosoft.vault.data.EncryptedFile;
 
-public class CipherModelLoader implements ModelLoader<Uri, InputStream> {
+public class EncryptedFileModelLoader implements ModelLoader<EncryptedFile, InputStream> {
     private final Context context;
-    private final int version;
 
-    public CipherModelLoader(@NonNull Context context, int version) {
+    public EncryptedFileModelLoader(@NonNull Context context) {
         this.context = context.getApplicationContext();
-        this.version = version;
     }
 
     @Nullable
     @Override
-    public LoadData<InputStream> buildLoadData(@NonNull Uri uri, int width, int height, @NonNull Options options) {
-        return new LoadData<>(new ObjectKey(uri), new CipherDataFetcher(context, uri, version));
+    public LoadData<InputStream> buildLoadData(@NonNull EncryptedFile encryptedFile, int width, int height, @NonNull Options options) {
+        return new LoadData<>(new ObjectKey(encryptedFile.getUri()), new CipherDataFetcher(context, encryptedFile.getUri(), encryptedFile.getVersion()));
     }
 
     @Override
-    public boolean handles(@NonNull Uri uri) {
-        String lastSegment = uri.getLastPathSegment();
-        if (lastSegment == null) {
-            return false;
-        }
-        
-        // V5 only: no extension, just 32-char alphanumeric random name
-        return !lastSegment.contains(".") && lastSegment.matches("[a-zA-Z0-9]{32}");
+    public boolean handles(@NonNull EncryptedFile encryptedFile) {
+        return true;
     }
-
 }

@@ -52,6 +52,8 @@ import se.arctosoft.vault.data.Password;
 import se.arctosoft.vault.encryption.Encryption;
 import se.arctosoft.vault.exception.InvalidPasswordException;
 
+import static se.arctosoft.vault.encryption.Encryption.SUFFIX_V5;
+
 public class FileStuff {
     private static final String TAG = "FileStuff";
 
@@ -86,51 +88,7 @@ public class FileStuff {
         List<GalleryFile> encryptedFilesInFolder = getEncryptedFilesInFolder(files, context);
         Collections.sort(encryptedFilesInFolder);
 
-        if (checkDecryptable && Settings.getInstance(context).displayDecryptableFilesOnly()) {
-            long start = System.currentTimeMillis();
-            List<GalleryFile> readableFiles = new ArrayList<>();
-            final Queue<GalleryFile> fileQueue = new ArrayDeque<>(encryptedFilesInFolder);
-            encryptedFilesInFolder.clear();
-            List<Thread> threads = new ArrayList<>();
-            ContentResolver contentResolver = context.getContentResolver();
-            Password password = Password.getInstance();
-            for (int i = 0; i < 4; i++) {
-                Thread t = new Thread(() -> {
-                    GalleryFile galleryFile;
-                    while ((galleryFile = fileQueue.poll()) != null) {
-                        if (galleryFile.isDirectory()) {
-                            readableFiles.add(galleryFile);
-                            continue;
-                        }
-                        Encryption.Streams streams = null;
-                        try {
-                            streams = Encryption.getCipherInputStream(contentResolver.openInputStream(galleryFile.getUri()), password.getPassword(), false, galleryFile.getVersion());
-                            galleryFile.setOriginalName(streams.getOriginalFileName());
-                            readableFiles.add(galleryFile);
-                        } catch (IOException | GeneralSecurityException | InvalidPasswordException |
-                                 JSONException ignored) {
-                        } finally {
-                            if (streams != null) {
-                                streams.close();
-                            }
-                        }
-                    }
-                });
-                threads.add(t);
-                t.start();
-            }
-            for (Thread t : threads) {
-                try {
-                    t.join();
-                } catch (InterruptedException e) {
-                    return readableFiles;
-                }
-            }
-            Log.e(TAG, "getFilesInFolder: took " + (System.currentTimeMillis() - start) + " ms");
-            return readableFiles;
-        } else {
-            return encryptedFilesInFolder;
-        }
+        return encryptedFilesInFolder;
     }
 
     @NonNull
@@ -139,30 +97,44 @@ public class FileStuff {
         List<CursorFile> documentThumbs = new ArrayList<>();
         List<CursorFile> documentNote = new ArrayList<>();
         List<GalleryFile> galleryFiles = new ArrayList<>();
+        
         for (CursorFile file : files) {
             String name = file.getName();
-            if (!name.startsWith(Encryption.ENCRYPTED_PREFIX) && !name.endsWith(Encryption.ENCRYPTED_SUFFIX) && !file.isDirectory()) {
+            
+            // Skip directories - they'll be handled separately
+            if (file.isDirectory()) {
+                documentFiles.add(file);
                 continue;
             }
-            //Log.e(TAG, "getEncryptedFilesInFolder: found " + name);
+            
+            // V5 only: files have no extension - just 32-char alphanumeric random name
+            boolean isV5File = !name.contains(".") && name.matches("[a-zA-Z0-9]{32}");
 
-            if (name.endsWith(Encryption.SUFFIX_THUMB) || name.startsWith(Encryption.PREFIX_THUMB)) {
-                documentThumbs.add(file);
-            } else if (name.endsWith(Encryption.SUFFIX_NOTE_FILE) || name.startsWith(Encryption.PREFIX_NOTE_FILE)) {
-                documentNote.add(file);
-            } else {
+            if (isV5File) {
+                // V5 file (32-char alphanumeric, no extension) - composite file with embedded thumbnail/note
                 documentFiles.add(file);
             }
+            // Else: unknown file type, skip it
         }
 
+        // Process files and find their thumbnails/notes
         for (CursorFile file : documentFiles) {
             if (file.isDirectory()) {
                 galleryFiles.add(GalleryFile.asDirectory(file));
                 continue;
             }
+            
             file.setNameWithoutPrefix(FileStuff.getNameWithoutPrefix(file.getName()));
+            
+            // Try finding by legacy _1/_2 pattern first (V3 Fase 1)
             CursorFile foundThumb = findCursorFile(documentThumbs, file.getNameWithoutPrefix());
             CursorFile foundNote = findCursorFile(documentNote, file.getNameWithoutPrefix());
+            
+            // For V4 files, thumbnails/notes use .t.valv/.n.valv pattern (random names)
+            // and cannot be correlated by base name. They will be found by:
+            // - Decryption time: reading JSON_THUMB_NAME from main file metadata
+            // - Or user accessing them individually
+            
             galleryFiles.add(GalleryFile.asFile(file, foundThumb, foundNote));
         }
         return galleryFiles;
@@ -217,11 +189,13 @@ public class FileStuff {
     }
 
     public static String getNameWithoutPrefix(@NonNull String encryptedName) {
-        if (encryptedName.startsWith(Encryption.ENCRYPTED_PREFIX)) {
-            return encryptedName.substring(encryptedName.indexOf("-") + 1);
-        } else {
-            return encryptedName.substring(0, encryptedName.lastIndexOf("-"));
+        // V5 pattern: 32-char alphanumeric with no extension - return as-is
+        if (!encryptedName.contains(".") && encryptedName.matches("[a-zA-Z0-9]{32}")) {
+            return encryptedName;
         }
+        
+        // Unknown pattern - return as-is
+        return encryptedName;
     }
 
     @NonNull
@@ -308,26 +282,22 @@ public class FileStuff {
         return file.getFileType().extension;
     }
 
-    public static boolean copyTo(Context context, GalleryFile sourceFile, DocumentFile directory) {
+        public static boolean copyTo(Context context, GalleryFile sourceFile, DocumentFile directory) {
         if (sourceFile.getUri().getLastPathSegment().equals(directory.getUri().getLastPathSegment() + "/" + sourceFile.getEncryptedName())) {
             Log.e(TAG, "moveTo: can't copy " + sourceFile.getUri().getLastPathSegment() + " to the same folder");
             return false;
         }
         String generatedName = StringStuff.getRandomFileName();
         int version = sourceFile.getVersion();
-        DocumentFile file = directory.createFile("", version < 2 ? sourceFile.getFileType().suffixPrefix + generatedName : generatedName + sourceFile.getFileType().suffixPrefix);
-        DocumentFile thumbFile = sourceFile.getThumbUri() == null ? null : directory.createFile("", version < 2 ? Encryption.PREFIX_THUMB + generatedName : generatedName + Encryption.SUFFIX_THUMB);
-        DocumentFile noteFile = sourceFile.getNoteUri() == null ? null : directory.createFile("", version < 2 ? Encryption.PREFIX_NOTE_FILE + generatedName : generatedName + Encryption.SUFFIX_NOTE_FILE);
-
+        
+        String fileSuffix = Encryption.SUFFIX_V5;
+        
+        String fileName = generatedName + fileSuffix;
+        DocumentFile file = directory.createFile("", fileName);
+        
         if (file == null) {
             Log.e(TAG, "copyTo: could not create file from " + sourceFile.getUri());
             return false;
-        }
-        if (thumbFile != null) {
-            writeTo(context, sourceFile.getThumbUri(), thumbFile.getUri());
-        }
-        if (noteFile != null) {
-            writeTo(context, sourceFile.getNoteUri(), noteFile.getUri());
         }
         return writeTo(context, sourceFile.getUri(), file.getUri());
     }
@@ -339,19 +309,15 @@ public class FileStuff {
         }
         String nameWithoutPrefix = getNameWithoutPrefix(sourceFile.getEncryptedName());
         int version = sourceFile.getVersion();
-        DocumentFile file = directory.createFile("", version < 2 ? sourceFile.getFileType().suffixPrefix + nameWithoutPrefix : nameWithoutPrefix + sourceFile.getFileType().suffixPrefix);
-        DocumentFile thumbFile = sourceFile.getThumbUri() == null ? null : directory.createFile("", version < 2 ? Encryption.PREFIX_THUMB + nameWithoutPrefix : nameWithoutPrefix + Encryption.SUFFIX_THUMB);
-        DocumentFile noteFile = sourceFile.getNoteUri() == null ? null : directory.createFile("", version < 2 ? Encryption.PREFIX_NOTE_FILE + nameWithoutPrefix : nameWithoutPrefix + Encryption.SUFFIX_NOTE_FILE);
+        
+        String fileSuffix = Encryption.SUFFIX_V5;
+        
+        String fileName = nameWithoutPrefix + fileSuffix;
+        DocumentFile file = directory.createFile("", fileName);
 
         if (file == null) {
             Log.e(TAG, "moveTo: could not create file from " + sourceFile.getUri());
             return false;
-        }
-        if (thumbFile != null) {
-            writeTo(context, sourceFile.getThumbUri(), thumbFile.getUri());
-        }
-        if (noteFile != null) {
-            writeTo(context, sourceFile.getNoteUri(), noteFile.getUri());
         }
         return writeTo(context, sourceFile.getUri(), file.getUri());
     }

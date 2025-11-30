@@ -46,6 +46,7 @@ public class MyDataSource implements DataSource {
     private final Context context;
 
     private Encryption.Streams streams;
+    private InputStream cachedInputStream;  // Cache the input stream for reuse
     private Uri uri;
     private final Password password;
     private final int version;
@@ -68,16 +69,27 @@ public class MyDataSource implements DataSource {
             return 0;
         }
 
+        // Use streaming for V5 to avoid loading entire file into memory
+        cachedInputStream = streams.getInputStreamStreaming();
+        if (cachedInputStream == null) {
+            Log.e(TAG, "open: inputStream is null!");
+            return 0;
+        }
+
         if (dataSpec.position != 0) {
-            long skipped = forceSkip(dataSpec.position, (CipherInputStream) streams.getInputStream());
+            long skipped = forceSkip(dataSpec.position, cachedInputStream);
         }
         return dataSpec.length;
     }
 
-    private long forceSkip(long skipBytes, CipherInputStream inputStream) throws IOException {
+    private long forceSkip(long skipBytes, InputStream inputStream) throws IOException {
         long skipped = 0L;
         while (skipped < skipBytes) {
-            inputStream.read();
+            int read = inputStream.read();
+            if (read == -1) {
+                Log.w(TAG, "forceSkip: EOF reached after " + skipped + " bytes");
+                break;
+            }
             skipped++;
         }
         return skipped;
@@ -89,7 +101,13 @@ public class MyDataSource implements DataSource {
             return 0;
         }
 
-        return streams.getInputStream().read(buffer, offset, length);
+        // Use the cached input stream instead of calling getInputStream() each time
+        if (cachedInputStream == null) {
+            Log.e(TAG, "read: cachedInputStream is null!");
+            return -1;
+        }
+        int bytesRead = cachedInputStream.read(buffer, offset, length);
+        return bytesRead;
     }
 
     @Nullable
@@ -100,7 +118,6 @@ public class MyDataSource implements DataSource {
 
     @Override
     public void close() {
-        Log.d(TAG, "close: ");
         if (streams != null) {
             streams.close();
         }

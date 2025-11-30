@@ -19,6 +19,10 @@ package se.arctosoft.vault.interfaces;
 
 import android.net.Uri;
 
+import java.util.List;
+
+import se.arctosoft.vault.data.GalleryFile;
+
 public interface IOnImportDone {
-    void onDone(Uri destinationUri, boolean isSameDirectory, int importedCount, int failedCount, int thumbErrorCount);
+    void onDone(Uri destinationUri, boolean isSameDirectory, int importedCount, int failedCount, int thumbErrorCount, List<GalleryFile> importedFiles);
 }

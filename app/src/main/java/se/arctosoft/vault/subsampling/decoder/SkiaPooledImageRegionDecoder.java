@@ -34,6 +34,9 @@ import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
@@ -174,7 +177,25 @@ public class SkiaPooledImageRegionDecoder implements ImageRegionDecoder {
         try {
             ContentResolver contentResolver = context.getContentResolver();
             streams = Encryption.getCipherInputStream(contentResolver.openInputStream(uri), password, false, version);
-            decoder = BitmapRegionDecoder.newInstance(streams.getInputStream(), false);
+            
+            // For V5 (detected by compositeStreams presence), use getFileBytes() 
+            // to get the complete file content.
+            InputStream decoderInput;
+            if (streams.compositeStreams != null) {
+                byte[] fileBytes = streams.getFileBytes();
+                if (fileBytes != null) {
+                    decoderInput = new ByteArrayInputStream(fileBytes);
+                } else {
+                    throw new IOException("Failed to read V5 file bytes for pooled region decoder");
+                }
+            } else {
+                decoderInput = streams.getInputStream();
+            }
+            
+            decoder = BitmapRegionDecoder.newInstance(decoderInput, false);
+        } catch (Exception e) {
+            Log.e(TAG, "initialiseDecoder: Exception occurred", e);
+            throw e;
         } finally {
             if (streams != null) {
                 streams.close();

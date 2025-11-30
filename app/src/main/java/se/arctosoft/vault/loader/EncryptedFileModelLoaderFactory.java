@@ -19,43 +19,32 @@
 package se.arctosoft.vault.loader;
 
 import android.content.Context;
-import android.net.Uri;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 
-import com.bumptech.glide.load.Options;
 import com.bumptech.glide.load.model.ModelLoader;
-import com.bumptech.glide.signature.ObjectKey;
+import com.bumptech.glide.load.model.ModelLoaderFactory;
+import com.bumptech.glide.load.model.MultiModelLoaderFactory;
 
 import java.io.InputStream;
 
-import se.arctosoft.vault.encryption.Encryption;
+import se.arctosoft.vault.data.EncryptedFile;
 
-public class CipherModelLoader implements ModelLoader<Uri, InputStream> {
+public class EncryptedFileModelLoaderFactory implements ModelLoaderFactory<EncryptedFile, InputStream> {
     private final Context context;
-    private final int version;
 
-    public CipherModelLoader(@NonNull Context context, int version) {
+    public EncryptedFileModelLoaderFactory(@NonNull Context context) {
         this.context = context.getApplicationContext();
-        this.version = version;
     }
 
-    @Nullable
+    @NonNull
     @Override
-    public LoadData<InputStream> buildLoadData(@NonNull Uri uri, int width, int height, @NonNull Options options) {
-        return new LoadData<>(new ObjectKey(uri), new CipherDataFetcher(context, uri, version));
+    public ModelLoader<EncryptedFile, InputStream> build(@NonNull MultiModelLoaderFactory multiFactory) {
+        return new EncryptedFileModelLoader(context);
     }
 
     @Override
-    public boolean handles(@NonNull Uri uri) {
-        String lastSegment = uri.getLastPathSegment();
-        if (lastSegment == null) {
-            return false;
-        }
-        
-        // V5 only: no extension, just 32-char alphanumeric random name
-        return !lastSegment.contains(".") && lastSegment.matches("[a-zA-Z0-9]{32}");
-    }
+    public void teardown() {
 
+    }
 }
