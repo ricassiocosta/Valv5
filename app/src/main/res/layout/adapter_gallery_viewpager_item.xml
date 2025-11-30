@@ -21,7 +21,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <se.arctosoft.vault.views.PressableImageView
+    <ricassiocosta.me.valv5.views.PressableImageView
         android:id="@+id/imgFullscreen"
         android:layout_width="32dp"
         android:layout_height="32dp"
@@ -30,7 +30,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <se.arctosoft.vault.views.PressableConstraintLayout
+    <ricassiocosta.me.valv5.views.PressableConstraintLayout
         android:id="@+id/note_layout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -56,7 +56,7 @@
 
         </ScrollView>
 
-        <se.arctosoft.vault.views.PressableImageView
+        <ricassiocosta.me.valv5.views.PressableImageView
             android:id="@+id/note_action"
             android:layout_width="wrap_content"
             android:layout_height="0dp"
@@ -66,7 +66,7 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="@id/note_scroll" />
 
-    </se.arctosoft.vault.views.PressableConstraintLayout>
+    </ricassiocosta.me.valv5.views.PressableConstraintLayout>
 
     <LinearLayout
         android:id="@+id/lLButtons"

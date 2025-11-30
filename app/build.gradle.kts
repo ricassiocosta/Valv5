@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "se.arctosoft.vault"
+    namespace = "ricassiocosta.me.valv5"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "se.arctosoft.vault"
+        applicationId = "ricassiocosta.me.valv5"
         minSdk = 28
         targetSdk = 36
         versionCode = 39

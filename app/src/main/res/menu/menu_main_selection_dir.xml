@@ -1,7 +1,7 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    tools:context="se.arctosoft.vault.MainActivity">
+    tools:context="ricassiocosta.me.valv5.MainActivity">
 
     <item
         android:id="@+id/lock"

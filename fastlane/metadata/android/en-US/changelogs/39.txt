@@ -1,3 +1,0 @@
-* Added biometrics. You can now unlock one vault with biometrics (fingerprint, face, etc.)
-* Every password/vault now has its own set of folders. E.g. using a new password will no longer show folders added using a different password.
-Note: this means that you will have to add your folders again as they are not carried over from the previous version.

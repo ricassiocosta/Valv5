@@ -1,3 +1,0 @@
-* Lade till en Alla filer-mapp (alla filer sorterade efter datum fallande)
-* Lade till snabbrullning till mappar med många filer
-* Appen kommer ihåg om filnamn ska visas eller döljas

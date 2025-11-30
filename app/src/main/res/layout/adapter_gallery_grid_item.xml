@@ -8,7 +8,7 @@
     app:strokeColor="?attr/gallery_grid_stroke"
     app:strokeWidth="1dp">
 
-    <se.arctosoft.vault.views.PressableConstraintLayout
+    <ricassiocosta.me.valv5.views.PressableConstraintLayout
         android:id="@+id/layout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -20,13 +20,13 @@
             android:orientation="vertical"
             app:layout_constraintTop_toTopOf="parent">
 
-            <se.arctosoft.vault.views.GridImageView
+            <ricassiocosta.me.valv5.views.GridImageView
                 android:id="@+id/imageView"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:scaleType="centerCrop" />
 
-            <se.arctosoft.vault.views.PressableGridTextView
+            <ricassiocosta.me.valv5.views.PressableGridTextView
                 android:id="@+id/textView"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
@@ -78,6 +78,6 @@
             app:layout_constraintEnd_toStartOf="@id/imgType"
             app:layout_constraintTop_toTopOf="parent" />
 
-    </se.arctosoft.vault.views.PressableConstraintLayout>
+    </ricassiocosta.me.valv5.views.PressableConstraintLayout>
 
 </com.google.android.material.card.MaterialCardView>

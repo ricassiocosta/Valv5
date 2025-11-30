@@ -1,3 +1,0 @@
-* First F-Droid release
-* Fixed a crash when importing files
-* Added a license screen
