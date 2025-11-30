@@ -64,12 +64,14 @@ import java.security.NoSuchProviderException;
 import java.security.SecureRandom;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
+import java.security.spec.AlgorithmParameterSpec;
 import java.security.spec.KeySpec;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import javax.crypto.AEADBadTagException;
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
 import javax.crypto.CipherOutputStream;
@@ -92,12 +94,17 @@ import ricassiocosta.me.valv5.utils.StringStuff;
 
 public class Encryption {
     private static final String TAG = "Encryption";
-    private static final String CIPHER = "ChaCha20/NONE/NoPadding";
+    private static final String CIPHER_LEGACY = "ChaCha20/NONE/NoPadding";
+    private static final String CIPHER_AEAD = "ChaCha20-Poly1305";
     private static final String KEY_ALGORITHM = "PBKDF2withHmacSHA512";
     private static final int KEY_LENGTH = 256;
     public static final int SALT_LENGTH = 16;
     private static final int IV_LENGTH = 12;
     private static final int CHECK_LENGTH = 12;
+    private static final int POLY1305_TAG_LENGTH = 16;
+    
+    // Flag to indicate AEAD mode in iteration count (high bit)
+    private static final int AEAD_FLAG = 0x80000000;
     private static final int INTEGER_LENGTH = 4;
     public static final int DIR_HASH_LENGTH = 8;
     private static final String JSON_ORIGINAL_NAME = "originalName";
@@ -671,7 +678,14 @@ public class Encryption {
 
     /**
      * Write composite file content (helper for createCompositeFile).
-     * Writes: plaintext header → encrypted(CHECK + JSON + FILE section + THUMBNAIL section + NOTE section + END marker)
+     * Uses ChaCha20-Poly1305 AEAD for authenticated encryption.
+     * 
+     * Format V5 with AEAD:
+     * - Header: [version:4][salt:16][iv:12][iteration_count_with_aead_flag:4]
+     * - Body: [encrypted_data + poly1305_tag:16]
+     * 
+     * The AEAD_FLAG (0x80000000) is set in iteration_count to indicate AEAD mode.
+     * Check bytes are no longer needed - Poly1305 tag provides authentication.
      */
     private static void writeCompositeFile(
             FragmentActivity context,
@@ -688,42 +702,27 @@ public class Encryption {
         SecureRandom sr = SecureRandom.getInstanceStrong();
         Settings settings = Settings.getInstance(context);
         final int ITERATION_COUNT = settings.getIterationCount();
+        
+        // Set AEAD flag in iteration count
+        final int storedIterationCount = ITERATION_COUNT | AEAD_FLAG;
 
         // Generate header components
         byte[] versionBytes = toByteArray(ENCRYPTION_VERSION_5);
         byte[] salt = new byte[SALT_LENGTH];
         byte[] ivBytes = new byte[IV_LENGTH];
-        byte[] iterationCount = toByteArray(ITERATION_COUNT);
-        byte[] checkBytes = new byte[CHECK_LENGTH];
-        generateSecureRandom(sr, salt, ivBytes, checkBytes);
+        byte[] iterationCountBytes = toByteArray(storedIterationCount);
+        sr.nextBytes(salt);
+        sr.nextBytes(ivBytes);
 
         // Derive key
         SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance(KEY_ALGORITHM);
         KeySpec keySpec = new PBEKeySpec(password, salt, ITERATION_COUNT, KEY_LENGTH);
         SecretKey secretKey = secretKeyFactory.generateSecret(keySpec);
-        IvParameterSpec ivParameterSpec = new IvParameterSpec(ivBytes);
 
-        // Initialize cipher
-        Cipher cipher = Cipher.getInstance(CIPHER);
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivParameterSpec);
-
-        // Open output stream
-        OutputStream fos = new BufferedOutputStream(
-                context.getContentResolver().openOutputStream(outputFile.getUri()),
-                1024 * 32);
-
-        // Write plaintext header (48 bytes)
-        writeSaltAndIV(versionBytes, salt, ivBytes, iterationCount, checkBytes, fos);
-        fos.flush();
-
-        // Create cipher output stream for encrypted content
-        CipherOutputStream cipherOutputStream = new CipherOutputStream(fos, cipher);
-        SectionWriter sectionWriter = new SectionWriter(cipherOutputStream);
-
-        // Write encrypted CHECK bytes (for password verification)
-        cipherOutputStream.write(checkBytes);
-
-        // Build and write metadata JSON
+        // Build plaintext content
+        ByteArrayOutputStream plaintextBuffer = new ByteArrayOutputStream();
+        
+        // Build metadata JSON
         JSONObject json = new JSONObject();
         json.put(JSON_ORIGINAL_NAME, originalFileName);
         if (fileType >= 0) {
@@ -739,14 +738,17 @@ public class Encryption {
         json.put("sections", sectionsObj);
 
         // Write metadata with newline delimiters
-        cipherOutputStream.write(("\n" + json + "\n").getBytes(StandardCharsets.UTF_8));
+        plaintextBuffer.write(("\n" + json + "\n").getBytes(StandardCharsets.UTF_8));
 
         // Write FILE section
-        sectionWriter.writeFileSection(fileInputStream, fileSize);
+        SectionWriter sectionWriter = new SectionWriter(plaintextBuffer);
+        byte[] fileData = readAllBytes(fileInputStream);
+        sectionWriter.writeFileSection(new ByteArrayInputStream(fileData), fileData.length);
 
         // Write THUMBNAIL section if present
         if (thumbnailInputStream != null && thumbnailSize > 0) {
-            sectionWriter.writeThumbnailSection(thumbnailInputStream, thumbnailSize);
+            byte[] thumbData = readAllBytes(thumbnailInputStream);
+            sectionWriter.writeThumbnailSection(new ByteArrayInputStream(thumbData), thumbData.length);
         }
 
         // Write NOTE section if present
@@ -757,9 +759,59 @@ public class Encryption {
         // Write END marker
         sectionWriter.writeEndMarker();
 
-        // Close streams
-        cipherOutputStream.close();
+        byte[] plaintext = plaintextBuffer.toByteArray();
+
+        // Encrypt with ChaCha20-Poly1305 AEAD
+        Cipher cipher = Cipher.getInstance(CIPHER_AEAD);
+        AlgorithmParameterSpec ivSpec = new IvParameterSpec(ivBytes);
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec);
+        
+        // Use header as AAD (Associated Authenticated Data)
+        byte[] aad = new byte[4 + SALT_LENGTH + IV_LENGTH + 4];
+        System.arraycopy(versionBytes, 0, aad, 0, 4);
+        System.arraycopy(salt, 0, aad, 4, SALT_LENGTH);
+        System.arraycopy(ivBytes, 0, aad, 4 + SALT_LENGTH, IV_LENGTH);
+        System.arraycopy(iterationCountBytes, 0, aad, 4 + SALT_LENGTH + IV_LENGTH, 4);
+        cipher.updateAAD(aad);
+        
+        byte[] ciphertext = cipher.doFinal(plaintext);
+
+        // Open output stream and write
+        OutputStream fos = new BufferedOutputStream(
+                context.getContentResolver().openOutputStream(outputFile.getUri()),
+                1024 * 32);
+
+        // Write header (36 bytes - no check bytes for AEAD)
+        fos.write(versionBytes);
+        fos.write(salt);
+        fos.write(ivBytes);
+        fos.write(iterationCountBytes);
+        
+        // Write encrypted content (includes Poly1305 tag at end)
+        fos.write(ciphertext);
+        
+        fos.flush();
         fos.close();
+        
+        // Clean up
+        try {
+            secretKey.destroy();
+        } catch (DestroyFailedException e) {
+            // Ignore
+        }
+    }
+    
+    /**
+     * Helper to read all bytes from an InputStream.
+     */
+    private static byte[] readAllBytes(InputStream is) throws IOException {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        int nRead;
+        byte[] data = new byte[16384];
+        while ((nRead = is.read(data, 0, data.length)) != -1) {
+            buffer.write(data, 0, nRead);
+        }
+        return buffer.toByteArray();
     }
 
     private static void createTextFile(FragmentActivity context, String input, DocumentFile outputFile, char[] password, String sourceFileName, int version) throws GeneralSecurityException, IOException, JSONException {
@@ -806,32 +858,140 @@ public class Encryption {
         streams.close();
     }
 
+    /**
+     * Decrypt an encrypted file and return streams for reading.
+     * Supports both AEAD (new) and legacy (old) V5 formats.
+     * 
+     * AEAD format (iteration_count has AEAD_FLAG set):
+     * - Header: [version:4][salt:16][iv:12][iteration_count|AEAD_FLAG:4]
+     * - Body: [encrypted_data + poly1305_tag:16]
+     * 
+     * Legacy format (no AEAD_FLAG):
+     * - Header: [version:4][salt:16][iv:12][iteration_count:4][check_bytes:12]
+     * - Body: [encrypted_data with check_bytes inside]
+     */
     public static Streams getCipherInputStream(@NonNull InputStream inputStream, char[] password, boolean isThumb, int version) throws IOException, GeneralSecurityException, InvalidPasswordException, JSONException {
         byte[] versionBytes = new byte[INTEGER_LENGTH];
         byte[] salt = new byte[SALT_LENGTH];
         byte[] ivBytes = new byte[IV_LENGTH];
-        byte[] iterationCount = new byte[INTEGER_LENGTH];
-        byte[] checkBytes1 = new byte[CHECK_LENGTH];
-        byte[] checkBytes2 = new byte[CHECK_LENGTH];
+        byte[] iterationCountBytes = new byte[INTEGER_LENGTH];
 
-        //1. VERSION SALT IVBYTES ITERATIONCOUNT CHECKBYTES CHECKBYTES_ENC\n
-        //2. {originalName, fileType, ...}\n
-        //3. file data
+        // Read header common to both formats
         inputStream.read(versionBytes);
         inputStream.read(salt);
         inputStream.read(ivBytes);
-        inputStream.read(iterationCount);
-        inputStream.read(checkBytes1);
+        inputStream.read(iterationCountBytes);
 
         final int DETECTED_VERSION = fromByteArray(versionBytes);
-        final int ITERATION_COUNT = fromByteArray(iterationCount);
+        final int rawIterationCount = fromByteArray(iterationCountBytes);
+        
+        // Check if AEAD mode (high bit set)
+        final boolean useAEAD = (rawIterationCount & AEAD_FLAG) != 0;
+        final int ITERATION_COUNT = rawIterationCount & 0x7FFFFFFF; // Clear AEAD flag
 
+        // Derive key
         SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance(KEY_ALGORITHM);
         KeySpec keySpec = new PBEKeySpec(password, salt, ITERATION_COUNT, KEY_LENGTH);
         SecretKey secretKey = secretKeyFactory.generateSecret(keySpec);
+
+        if (useAEAD) {
+            // AEAD mode: ChaCha20-Poly1305
+            return decryptAEAD(inputStream, secretKey, versionBytes, salt, ivBytes, iterationCountBytes, DETECTED_VERSION);
+        } else {
+            // Legacy mode: ChaCha20 with check bytes
+            return decryptLegacy(inputStream, secretKey, ivBytes, password, salt, ITERATION_COUNT, DETECTED_VERSION);
+        }
+    }
+    
+    /**
+     * Decrypt using ChaCha20-Poly1305 AEAD.
+     * Authentication failure (wrong password or tampering) throws InvalidPasswordException.
+     */
+    private static Streams decryptAEAD(
+            InputStream inputStream,
+            SecretKey secretKey,
+            byte[] versionBytes,
+            byte[] salt,
+            byte[] ivBytes,
+            byte[] iterationCountBytes,
+            int detectedVersion) throws IOException, GeneralSecurityException, InvalidPasswordException, JSONException {
+        
+        // Read all remaining data (ciphertext + tag)
+        byte[] ciphertext = readAllBytes(inputStream);
+        
+        // Build AAD from header
+        byte[] aad = new byte[4 + SALT_LENGTH + IV_LENGTH + 4];
+        System.arraycopy(versionBytes, 0, aad, 0, 4);
+        System.arraycopy(salt, 0, aad, 4, SALT_LENGTH);
+        System.arraycopy(ivBytes, 0, aad, 4 + SALT_LENGTH, IV_LENGTH);
+        System.arraycopy(iterationCountBytes, 0, aad, 4 + SALT_LENGTH + IV_LENGTH, 4);
+        
+        // Decrypt with AEAD
+        Cipher cipher = Cipher.getInstance(CIPHER_AEAD);
+        AlgorithmParameterSpec ivSpec = new IvParameterSpec(ivBytes);
+        cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec);
+        cipher.updateAAD(aad);
+        
+        byte[] plaintext;
+        try {
+            plaintext = cipher.doFinal(ciphertext);
+        } catch (AEADBadTagException e) {
+            // Authentication failed - file was tampered with or doesn't belong to this session
+            throw new InvalidPasswordException("File authentication failed - file may be corrupted or from different session");
+        }
+        
+        // Parse decrypted content
+        ByteArrayInputStream plaintextStream = new ByteArrayInputStream(plaintext);
+        
+        // V5: Parse sections
+        if (detectedVersion >= ENCRYPTION_VERSION_5) {
+            // Skip leading newline
+            int newline1 = plaintextStream.read();
+            if (newline1 != 0x0A) {
+                throw new IOException("Not valid V5 AEAD file, expected 0x0A but got 0x" + String.format("%02X", newline1));
+            }
+
+            // Read JSON metadata
+            byte[] jsonBytes = readUntilNewline(plaintextStream);
+            String jsonStr = new String(jsonBytes, StandardCharsets.UTF_8);
+            JSONObject json = new JSONObject(jsonStr);
+            String originalName = json.has(JSON_ORIGINAL_NAME) ? json.getString(JSON_ORIGINAL_NAME) : "";
+            int fileType = json.has(JSON_FILE_TYPE) ? json.getInt(JSON_FILE_TYPE) : -1;
+
+            // Create CompositeStreams wrapper for reading V5 sections
+            CompositeStreams compositeStreams = new CompositeStreams(plaintextStream);
+
+            // Store metadata in a custom Streams object for compatibility
+            Streams streams = new Streams(plaintextStream, secretKey, originalName, fileType, ContentType.FILE, null);
+            streams.compositeStreams = compositeStreams;
+            return streams;
+        }
+
+        throw new IOException("Only V5 encrypted files are supported.");
+    }
+    
+    /**
+     * Decrypt using legacy ChaCha20 with check bytes.
+     * For backwards compatibility with files encrypted before AEAD migration.
+     */
+    private static Streams decryptLegacy(
+            InputStream inputStream,
+            SecretKey secretKey,
+            byte[] ivBytes,
+            char[] password,
+            byte[] salt,
+            int iterationCount,
+            int detectedVersion) throws IOException, GeneralSecurityException, InvalidPasswordException, JSONException {
+        
+        byte[] checkBytes1 = new byte[CHECK_LENGTH];
+        byte[] checkBytes2 = new byte[CHECK_LENGTH];
+        
+        // Read check bytes from header
+        inputStream.read(checkBytes1);
+
         IvParameterSpec ivParameterSpec = new IvParameterSpec(ivBytes);
 
-        Cipher cipher = Cipher.getInstance(CIPHER);
+        Cipher cipher = Cipher.getInstance(CIPHER_LEGACY);
         cipher.init(Cipher.DECRYPT_MODE, secretKey, ivParameterSpec);
         CipherInputStream cipherInputStream = new MyCipherInputStream(inputStream, cipher);
 
@@ -841,7 +1001,7 @@ public class Encryption {
         }
 
         // V5: Return CompositeStreams for V5 files
-        if (DETECTED_VERSION >= ENCRYPTION_VERSION_5) {
+        if (detectedVersion >= ENCRYPTION_VERSION_5) {
             // V5 files have sections instead of plaintext metadata
             // Skip the newline after header
             int newline1 = cipherInputStream.read();
@@ -922,7 +1082,7 @@ public class Encryption {
         SecretKey secretKey = secretKeyFactory.generateSecret(keySpec);
         IvParameterSpec ivParameterSpec = new IvParameterSpec(ivBytes);
 
-        Cipher cipher = Cipher.getInstance(CIPHER);
+        Cipher cipher = Cipher.getInstance(CIPHER_LEGACY);
         cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivParameterSpec);
 
         InputStream inputStream = context.getContentResolver().openInputStream(input);
@@ -976,7 +1136,7 @@ public class Encryption {
         SecretKey secretKey = secretKeyFactory.generateSecret(keySpec);
         IvParameterSpec ivParameterSpec = new IvParameterSpec(ivBytes);
 
-        Cipher cipher = Cipher.getInstance(CIPHER);
+        Cipher cipher = Cipher.getInstance(CIPHER_LEGACY);
         cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivParameterSpec);
 
         OutputStream fos = new BufferedOutputStream(context.getContentResolver().openOutputStream(outputFile.getUri()), 1024 * 32);
