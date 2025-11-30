@@ -1,5 +1,8 @@
 <resources>
     <string name="app_name">Valv5</string>
+    <string name="exit">Exit</string>
+    <string name="security_warning_title">Security Warning</string>
+    <string name="security_warning_rooted">This device appears to be rooted or tampered with. For security reasons, the app cannot run on compromised devices.</string>
     <string name="gallery_encrypt_file">Encrypt file</string>
     <string name="gallery_decrypt_file">Decrypt file</string>
     <string name="title_activity_main">MainActivity</string>

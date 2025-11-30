@@ -42,6 +42,7 @@ import javax.crypto.spec.IvParameterSpec;
 import ricassiocosta.me.valv5.data.DirHash;
 import ricassiocosta.me.valv5.databinding.FragmentPasswordBinding;
 import ricassiocosta.me.valv5.encryption.Encryption;
+import ricassiocosta.me.valv5.security.SecurityUtils;
 import ricassiocosta.me.valv5.utils.Dialogs;
 import ricassiocosta.me.valv5.utils.Settings;
 import ricassiocosta.me.valv5.utils.Toaster;
@@ -74,6 +75,9 @@ public class PasswordFragment extends Fragment {
         savedStateHandle.set(LOGIN_SUCCESSFUL, false);
 
         Settings settings = Settings.getInstance(requireContext());
+
+        // Perform security checks on startup
+        performSecurityChecks(settings);
 
         binding.eTPassword.addTextChangedListener(new TextWatcher() {
             @Override
@@ -187,6 +191,37 @@ public class PasswordFragment extends Fragment {
         } else {
             binding.biometrics.setVisibility(View.GONE);
         }
+    }
+
+    /**
+     * Perform security checks on app startup.
+     * Blocks access if device is rooted or tampered.
+     */
+    private void performSecurityChecks(Settings settings) {
+        new Thread(() -> {
+            boolean isRooted = SecurityUtils.isRooted();
+            boolean hasMagisk = SecurityUtils.hasMagisk();
+
+            if (isRooted || hasMagisk) {
+                requireActivity().runOnUiThread(() -> {
+                    // Disable all UI elements
+                    binding.eTPassword.setEnabled(false);
+                    binding.btnUnlock.setEnabled(false);
+                    binding.biometrics.setEnabled(false);
+                    binding.biometrics.setVisibility(View.GONE);
+
+                    // Show security warning
+                    new androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                            .setTitle(R.string.security_warning_title)
+                            .setMessage(R.string.security_warning_rooted)
+                            .setCancelable(false)
+                            .setPositiveButton(R.string.exit, (dialog, which) -> {
+                                requireActivity().finishAffinity();
+                            })
+                            .show();
+                });
+            }
+        }).start();
     }
 
 }
