@@ -106,7 +106,7 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
     private final IOnFileDeleted onFileDeleted;
     private final DocumentFile currentDirectory;
     private final GalleryViewModel galleryViewModel;
-    private final boolean isAllFolder, useDiskCache;
+    private final boolean isAllFolder;
     private final String nestedPath;
     private final Map<Integer, ExoPlayer> players;
     private final Password password;
@@ -134,7 +134,6 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
         this.nestedPath = nestedPath;
         this.players = new HashMap<>();
         this.password = Password.getInstance();
-        this.useDiskCache = Settings.getInstance(context).useDiskCache();
     }
 
     @NonNull
@@ -250,7 +249,7 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
         if (firstFile != null) {
             Glide.with(context)
                     .load(firstFile.getThumbUri())
-                    .apply(GlideStuff.getRequestOptions(useDiskCache))
+                    .apply(GlideStuff.getRequestOptions())
                     .into(((GalleryPagerViewHolder.GalleryPagerDirectoryViewHolder) holder).binding.thumb);
         }
     }
@@ -336,7 +335,7 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
         holder.binding.playerView.setVisibility(View.INVISIBLE);
         Glide.with(context)
                 .load(galleryFile.getThumbUri())
-                .apply(GlideStuff.getRequestOptions(useDiskCache))
+                .apply(GlideStuff.getRequestOptions())
                 .into(holder.binding.imgThumb);
         holder.parentBinding.imgFullscreen.setVisibility(isFullscreen ? View.GONE : View.VISIBLE);
         holder.binding.rLPlay.setOnClickListener(v -> {
@@ -501,13 +500,13 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
         if (galleryFile.getOriginalName() != null && galleryFile.getOriginalName().toLowerCase().endsWith(".webp")) {
             glideRequest
                     .load(new EncryptedFile(galleryFile.getUri(), galleryFile.getVersion()))
-                    .apply(GlideStuff.getRequestOptions(useDiskCache))
+                    .apply(GlideStuff.getRequestOptions())
                     .into(holder.binding.gifImageView);
         } else {
             glideRequest
                     .asGif()
                     .load(new EncryptedFile(galleryFile.getUri(), galleryFile.getVersion()))
-                    .apply(GlideStuff.getRequestOptions(useDiskCache))
+                    .apply(GlideStuff.getRequestOptions())
                     .into(holder.binding.gifImageView);
         }
     }
