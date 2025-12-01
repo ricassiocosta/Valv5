@@ -86,7 +86,8 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
     
     // Thread pool for loading thumbnails - limited to prevent OOM
     private static final int THUMBNAIL_LOADER_THREADS = 4;
-    private final ExecutorService thumbnailExecutor = Executors.newFixedThreadPool(THUMBNAIL_LOADER_THREADS);
+    private ExecutorService thumbnailExecutor = Executors.newFixedThreadPool(THUMBNAIL_LOADER_THREADS);
+    private volatile boolean isShutdown = false;
     
     // Track pending thumbnail loads to cancel when ViewHolder is recycled
     private final Map<Uri, Future<?>> pendingTasks = new ConcurrentHashMap<>();
@@ -546,6 +547,11 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
      * Uses ExecutorService for better thread management and LruCache for caching.
      */
     private void loadCompositeThumb(FragmentActivity context, GalleryFile galleryFile, @NonNull GalleryGridViewHolder holder) {
+        // Don't process if executor is shutdown
+        if (isShutdown) {
+            return;
+        }
+        
         Uri fileUri = galleryFile.getUri();
         
         // Set the current file URI on the holder for tracking
@@ -554,7 +560,10 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
         // Check metadata cache first - avoids re-reading encrypted file
         Encryption.V5MetadataResult cachedMetadata = metadataCache.get(fileUri);
         if (cachedMetadata != null) {
-            applyMetadata(context, galleryFile, holder, cachedMetadata, fileUri);
+            // Verify context is still valid before applying
+            if (!context.isDestroyed()) {
+                applyMetadata(context, galleryFile, holder, cachedMetadata, fileUri);
+            }
             return;
         }
         
@@ -564,42 +573,47 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             existingTask.cancel(true);
         }
         
-        // Submit new task to executor
-        Future<?> task = thumbnailExecutor.submit(() -> {
-            // Check if this holder is still showing this file
-            if (!fileUri.equals(holder.getCurrentFileUri())) {
-                return;
-            }
-            
-            try {
-                char[] pwd = Password.getInstance().getPassword();
-                
-                Encryption.V5MetadataResult metadata = Encryption.readCompositeMetadata(galleryFile.getUri(), context, pwd);
-                if (metadata != null) {
-                    // Cache the metadata result
-                    metadataCache.put(fileUri, metadata);
-                    
-                    // Apply metadata on UI thread
-                    FragmentActivity currentContext = weakReference.get();
-                    if (currentContext != null && !currentContext.isDestroyed() && fileUri.equals(holder.getCurrentFileUri())) {
-                        currentContext.runOnUiThread(() -> {
-                            if (fileUri.equals(holder.getCurrentFileUri())) {
-                                applyMetadata(currentContext, galleryFile, holder, metadata, fileUri);
-                            }
-                        });
-                    }
-                } else {
-                    showBrokenImage(holder, fileUri, galleryFile);
+        // Submit new task to executor - wrap in try-catch for RejectedExecutionException
+        try {
+            Future<?> task = thumbnailExecutor.submit(() -> {
+                // Check if this holder is still showing this file
+                if (!fileUri.equals(holder.getCurrentFileUri())) {
+                    return;
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
-                showBrokenImage(holder, fileUri, galleryFile);
-            } finally {
-                pendingTasks.remove(fileUri);
-            }
-        });
-        
-        pendingTasks.put(fileUri, task);
+                
+                try {
+                    char[] pwd = Password.getInstance().getPassword();
+                    
+                    Encryption.V5MetadataResult metadata = Encryption.readCompositeMetadata(galleryFile.getUri(), context, pwd);
+                    if (metadata != null) {
+                        // Cache the metadata result
+                        metadataCache.put(fileUri, metadata);
+                        
+                        // Apply metadata on UI thread
+                        FragmentActivity currentContext = weakReference.get();
+                        if (currentContext != null && !currentContext.isDestroyed() && fileUri.equals(holder.getCurrentFileUri())) {
+                            currentContext.runOnUiThread(() -> {
+                                if (fileUri.equals(holder.getCurrentFileUri())) {
+                                    applyMetadata(currentContext, galleryFile, holder, metadata, fileUri);
+                                }
+                            });
+                        }
+                    } else {
+                        showBrokenImage(holder, fileUri, galleryFile);
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    showBrokenImage(holder, fileUri, galleryFile);
+                } finally {
+                    pendingTasks.remove(fileUri);
+                }
+            });
+            
+            pendingTasks.put(fileUri, task);
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            // Executor was shutdown, ignore
+            Log.w(TAG, "Executor shutdown, ignoring thumbnail load request");
+        }
     }
     
     /**
@@ -639,10 +653,15 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                     .into(holder.binding.imageView);
         }
         
+        // Post the notifyItemChanged to avoid calling it during layout/scroll
         if (typeChanged) {
-            int pos = galleryFiles.indexOf(galleryFile);
+            final int pos = galleryFiles.indexOf(galleryFile);
             if (pos >= 0) {
-                notifyItemChanged(pos, new Payload(Payload.TYPE_NEW_FILENAME));
+                holder.itemView.post(() -> {
+                    if (!isShutdown) {
+                        notifyItemChanged(pos, new Payload(Payload.TYPE_NEW_FILENAME));
+                    }
+                });
             }
         }
     }
@@ -659,9 +678,14 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                             .load(R.drawable.outline_broken_image_24)
                             .centerInside()
                             .into(holder.binding.imageView);
-                    int pos = galleryFiles.indexOf(galleryFile);
+                    // Post the notifyItemChanged to avoid calling it during layout/scroll
+                    final int pos = galleryFiles.indexOf(galleryFile);
                     if (pos >= 0) {
-                        notifyItemChanged(pos, new Payload(Payload.TYPE_NEW_FILENAME));
+                        holder.itemView.post(() -> {
+                            if (!isShutdown) {
+                                notifyItemChanged(pos, new Payload(Payload.TYPE_NEW_FILENAME));
+                            }
+                        });
                     }
                 }
             });
@@ -693,6 +717,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
      * Call this method when the adapter is being destroyed to shutdown the executor.
      */
     public void shutdown() {
+        isShutdown = true;
         thumbnailExecutor.shutdownNow();
         pendingTasks.clear();
         metadataCache.evictAll();
