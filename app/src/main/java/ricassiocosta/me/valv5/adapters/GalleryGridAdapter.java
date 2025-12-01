@@ -220,7 +220,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             } else if (firstFile.getThumbUri() != null) {
                 Glide.with(context)
                         .load(firstFile.getThumbUri())
-                        .apply(GlideStuff.getRequestOptions(useDiskCache))
+                        .apply(GlideStuff.getGridThumbnailOptions(useDiskCache))
                         .into(holder.binding.imageView);
             } else if (firstFile.mayBeV5CompositeFile()) {
                 loadCompositeThumb(context, firstFile, holder);
@@ -244,7 +244,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             } else if (galleryFile.getThumbUri() != null) {
                 Glide.with(context)
                         .load(galleryFile.getThumbUri())
-                        .apply(GlideStuff.getRequestOptions(useDiskCache))
+                        .apply(GlideStuff.getGridThumbnailOptions(useDiskCache))
                         .listener(new RequestListener<>() {
                             @Override
                             public boolean onLoadFailed(@Nullable GlideException e, Object model, @NonNull Target<Drawable> target, boolean isFirstResource) {
@@ -644,7 +644,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             galleryFile.setThumbUri(metadata.thumbUri);
             Glide.with(context)
                     .load(metadata.thumbUri)
-                    .apply(GlideStuff.getRequestOptions(useDiskCache))
+                    .apply(GlideStuff.getGridThumbnailOptions(useDiskCache))
                     .into(holder.binding.imageView);
         } else {
             Glide.with(context)

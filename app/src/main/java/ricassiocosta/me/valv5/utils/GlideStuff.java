@@ -35,4 +35,16 @@ public class GlideStuff {
                 .signature(new ObjectKey(MainActivity.GLIDE_KEY));
     }
 
+    /**
+     * Request options for grid thumbnails - skips memory cache to reduce memory usage.
+     * Thumbnails will be reloaded when scrolling back, but this prevents OOM with large galleries.
+     */
+    @NonNull
+    public static RequestOptions getGridThumbnailOptions(boolean useDiskCache) {
+        return new RequestOptions()
+                .diskCacheStrategy(useDiskCache ? DiskCacheStrategy.AUTOMATIC : DiskCacheStrategy.NONE)
+                .signature(new ObjectKey(MainActivity.GLIDE_KEY))
+                .skipMemoryCache(true);
+    }
+
 }

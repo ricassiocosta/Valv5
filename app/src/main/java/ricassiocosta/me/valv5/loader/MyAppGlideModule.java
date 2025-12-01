@@ -28,6 +28,8 @@ import com.bumptech.glide.Glide;
 import com.bumptech.glide.GlideBuilder;
 import com.bumptech.glide.Registry;
 import com.bumptech.glide.annotation.GlideModule;
+import com.bumptech.glide.load.engine.cache.LruResourceCache;
+import com.bumptech.glide.load.engine.cache.MemorySizeCalculator;
 import com.bumptech.glide.module.AppGlideModule;
 
 import java.io.InputStream;
@@ -45,6 +47,15 @@ public class MyAppGlideModule extends AppGlideModule {
     @Override
     public void applyOptions(@NonNull Context context, @NonNull GlideBuilder builder) {
         builder.setLogLevel(Log.ERROR);
+        
+        // Limit memory cache to ~20MB for thumbnails
+        // This ensures only visible + nearby thumbnails are kept in memory
+        MemorySizeCalculator calculator = new MemorySizeCalculator.Builder(context)
+                .setMemoryCacheScreens(1.5f) // Keep ~1.5 screens worth of images
+                .build();
+        int memoryCacheSize = Math.min(calculator.getMemoryCacheSize(), 20 * 1024 * 1024); // Max 20MB
+        builder.setMemoryCache(new LruResourceCache(memoryCacheSize));
+        
         super.applyOptions(context, builder);
     }
 }
