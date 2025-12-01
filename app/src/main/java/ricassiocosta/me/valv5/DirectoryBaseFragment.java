@@ -65,6 +65,7 @@ import ricassiocosta.me.valv5.data.Password;
 import ricassiocosta.me.valv5.encryption.Encryption;
 import ricassiocosta.me.valv5.exception.InvalidPasswordException;
 import ricassiocosta.me.valv5.databinding.FragmentDirectoryBinding;
+import ricassiocosta.me.valv5.security.SecureMemoryManager;
 import ricassiocosta.me.valv5.utils.Dialogs;
 import ricassiocosta.me.valv5.utils.FileStuff;
 import ricassiocosta.me.valv5.utils.Settings;
@@ -694,6 +695,11 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         if (galleryGridAdapter != null) {
             galleryGridAdapter.shutdown();
         }
+        
+        // Note: We do NOT call SecureMemoryManager.onFolderChanged() here
+        // because it would affect the parent fragment that's being restored.
+        // Memory cleanup happens only on app lock/close via performFullCleanup().
+        
         super.onDestroy();
     }
 

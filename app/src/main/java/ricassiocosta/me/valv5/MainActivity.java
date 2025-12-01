@@ -1,6 +1,7 @@
 package ricassiocosta.me.valv5;
 
 import android.content.BroadcastReceiver;
+import android.content.ComponentCallbacks2;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -30,6 +31,7 @@ import java.util.Objects;
 
 import ricassiocosta.me.valv5.data.Password;
 import ricassiocosta.me.valv5.databinding.ActivityMainBinding;
+import ricassiocosta.me.valv5.security.SecureMemoryManager;
 import ricassiocosta.me.valv5.utils.FileStuff;
 import ricassiocosta.me.valv5.utils.Settings;
 import ricassiocosta.me.valv5.viewmodel.ShareViewModel;
@@ -135,11 +137,27 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
-        Log.d(TAG, "onDestroy: " + isChangingConfigurations());
         if (!isChangingConfigurations()) {
+            // Perform full memory cleanup when app is being destroyed
             Password.lock(this, false);
+            SecureMemoryManager.getInstance().performFullCleanup(this);
         }
         super.onDestroy();
+    }
+    
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        
+        // When system is low on memory or app goes to background, clean sensitive data
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            SecureMemoryManager.getInstance().wipeAll();
+        }
+        
+        // If system is critically low on memory, perform full cleanup
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE) {
+            SecureMemoryManager.getInstance().performFullCleanup(this);
+        }
     }
 
     private void installScreenOffReceiver() {

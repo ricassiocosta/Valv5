@@ -75,6 +75,7 @@ import ricassiocosta.me.valv5.interfaces.IOnFileDeleted;
 import ricassiocosta.me.valv5.interfaces.IOnSelectionModeChanged;
 import ricassiocosta.me.valv5.utils.GlideStuff;
 import ricassiocosta.me.valv5.utils.Settings;
+import ricassiocosta.me.valv5.security.SecureMemoryManager;
 import ricassiocosta.me.valv5.utils.StringStuff;
 import ricassiocosta.me.valv5.viewmodel.GalleryViewModel;
 
@@ -131,6 +132,9 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
         this.selectedFiles = new UniqueLinkedList<>();
         this.isRootDir = isRootDir;
         password = Password.getInstance();
+        
+        // Note: metadataCache is NOT registered with SecureMemoryManager
+        // It only contains non-sensitive metadata (URIs, file types), not decrypted content
     }
 
     public void setNestedPath(String nestedPath) {

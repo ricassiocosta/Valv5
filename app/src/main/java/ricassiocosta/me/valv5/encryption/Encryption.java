@@ -96,6 +96,7 @@ import ricassiocosta.me.valv5.data.FileType;
 import ricassiocosta.me.valv5.data.GalleryFile;
 import ricassiocosta.me.valv5.exception.InvalidPasswordException;
 import ricassiocosta.me.valv5.interfaces.IOnProgress;
+import ricassiocosta.me.valv5.security.SecureMemoryManager;
 import ricassiocosta.me.valv5.utils.FileStuff;
 import ricassiocosta.me.valv5.utils.Settings;
 import ricassiocosta.me.valv5.utils.StringStuff;
@@ -858,7 +859,8 @@ public class Encryption {
         fos.flush();
         fos.close();
         
-        // Clean up
+        // Clean up sensitive data using SecureMemoryManager
+        SecureMemoryManager.getInstance().wipeNow(ciphertext);
         try {
             secretKey.destroy();
         } catch (DestroyFailedException e) {
@@ -969,8 +971,8 @@ public class Encryption {
         encryptedOut.finish();
         encryptedOut.close();
         
-        // Clean up
-        Arrays.fill(keyBytes, (byte) 0);
+        // Clean up using SecureMemoryManager
+        SecureMemoryManager.getInstance().wipeNow(keyBytes);
         try {
             secretKey.destroy();
         } catch (DestroyFailedException e) {
@@ -1425,11 +1427,14 @@ public class Encryption {
                 
                 Argon2.Result result = argon2.hash(passwordBytes, salt);
                 keyBytes = result.getHash();
+                
+                // Register keyBytes for later cleanup
+                SecureMemoryManager.getInstance().register(keyBytes);
             } catch (org.signal.argon2.Argon2Exception e) {
                 throw new GeneralSecurityException("Argon2 key derivation failed", e);
             } finally {
-                // Clear password bytes from memory
-                Arrays.fill(passwordBytes, (byte) 0);
+                // Clear password bytes from memory using SecureMemoryManager
+                SecureMemoryManager.getInstance().wipeNow(passwordBytes);
             }
         } else {
             // PBKDF2-HMAC-SHA512 - legacy/fallback KDF
@@ -1445,17 +1450,20 @@ public class Encryption {
     /**
      * Convert char[] password to byte[] using UTF-8 encoding.
      * The returned array should be cleared after use.
+     * The returned bytes are registered with SecureMemoryManager for cleanup.
      */
     private static byte[] charArrayToBytes(char[] chars) {
         CharBuffer charBuffer = CharBuffer.wrap(chars);
         ByteBuffer byteBuffer = StandardCharsets.UTF_8.encode(charBuffer);
         byte[] bytes = new byte[byteBuffer.remaining()];
         byteBuffer.get(bytes);
-        // Clear the buffer
-        byteBuffer.clear();
-        while (byteBuffer.hasRemaining()) {
-            byteBuffer.put((byte) 0);
-        }
+        
+        // Clear the buffer using SecureMemoryManager
+        SecureMemoryManager.getInstance().wipeNow(byteBuffer);
+        
+        // Register the returned bytes for later cleanup
+        SecureMemoryManager.getInstance().register(bytes);
+        
         return bytes;
     }
 

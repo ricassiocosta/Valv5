@@ -26,6 +26,7 @@ import com.bumptech.glide.Glide;
 import java.util.Arrays;
 
 import ricassiocosta.me.valv5.MainActivity;
+import ricassiocosta.me.valv5.security.SecureMemoryManager;
 import ricassiocosta.me.valv5.utils.FileStuff;
 import ricassiocosta.me.valv5.utils.Settings;
 
@@ -40,6 +41,10 @@ public class Password {
     }
 
     public void setPassword(char[] password) {
+        // Register the new password with SecureMemoryManager for cleanup
+        if (password != null) {
+            SecureMemoryManager.getInstance().register(password);
+        }
         this.password = password;
     }
 
@@ -64,7 +69,8 @@ public class Password {
 
     public void clear() {
         if (password != null) {
-            Arrays.fill(password, (char) 0);
+            // Use SecureMemoryManager for secure wiping
+            SecureMemoryManager.getInstance().wipeNow(password);
             password = null;
         }
         if (dirHash != null) {
@@ -74,18 +80,21 @@ public class Password {
     }
 
     public static void lock(Context context, boolean deleteDirHash) {
-        Log.e(TAG, "lock" + ", " + context + ", " + deleteDirHash);
         Password p = Password.getInstance();
         if (deleteDirHash && context != null && p.dirHash != null) {
             Settings settings = Settings.getInstance(context);
             settings.deleteDirHashEntry(p.dirHash.salt(), p.dirHash.hash());
         }
         p.clear();
+        
+        // Perform full memory cleanup including all registered sensitive buffers
+        SecureMemoryManager.getInstance().performFullCleanup(context);
+        
+        // Legacy cleanup for backwards compatibility
         if (context != null) {
             FileStuff.deleteCache(context);
             Glide.get(context).clearMemory();
         }
-        //new Thread(() -> Glide.get(context).clearDiskCache()).start();
         MainActivity.GLIDE_KEY = System.currentTimeMillis();
     }
 }
