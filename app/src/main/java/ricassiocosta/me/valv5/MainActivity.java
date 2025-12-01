@@ -43,6 +43,9 @@ public class MainActivity extends AppCompatActivity {
     private AppBarConfiguration appBarConfiguration;
     private ActivityMainBinding binding;
     private BroadcastReceiver screenOffReceiver;
+    
+    // Background lock timer - stores timestamp when app went to background
+    private long backgroundTimestamp = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -91,12 +94,14 @@ public class MainActivity extends AppCompatActivity {
     protected void onStart() {
         super.onStart();
         installScreenOffReceiver();
+        checkBackgroundLockTimeout();
     }
 
     @Override
     protected void onStop() {
         super.onStop();
         uninstallScreenOffReceiver();
+        startBackgroundLockTimer();
     }
 
     private void handleSendSingle(@NonNull Intent intent) {
@@ -173,6 +178,99 @@ public class MainActivity extends AppCompatActivity {
         if (screenOffReceiver != null) {
             unregisterReceiver(screenOffReceiver);
             screenOffReceiver = null;
+        }
+    }
+
+    /**
+     * Start the background lock timer when the app goes to background.
+     * This stores the timestamp when the app went to background.
+     * Does NOT affect screen off lock which is handled separately.
+     */
+    private void startBackgroundLockTimer() {
+        Settings settings = Settings.getInstance(this);
+        int timeoutSeconds = settings.getBackgroundLockTimeout();
+        
+        // If timeout is 0 (disabled), don't start the timer
+        if (timeoutSeconds == 0) {
+            SecureLog.d(TAG, "Background lock timer is disabled");
+            backgroundTimestamp = 0;
+            return;
+        }
+        
+        // Check if vault is already locked (on password screen)
+        NavHostFragment navHostFragment = (NavHostFragment) getSupportFragmentManager().findFragmentById(R.id.nav_host_fragment_content_main);
+        if (navHostFragment != null) {
+            NavController navController = navHostFragment.getNavController();
+            if (navController.getCurrentDestination() != null && 
+                navController.getCurrentDestination().getId() == R.id.password) {
+                SecureLog.d(TAG, "Vault already locked, not starting background timer");
+                backgroundTimestamp = 0;
+                return;
+            }
+        }
+        
+        // Store the timestamp when app went to background
+        backgroundTimestamp = System.currentTimeMillis();
+        SecureLog.d(TAG, "Background lock timer started: " + timeoutSeconds + " seconds, timestamp: " + backgroundTimestamp);
+    }
+
+    /**
+     * Check if the background lock timeout has expired when returning to foreground.
+     * If expired, lock the vault immediately.
+     */
+    private void checkBackgroundLockTimeout() {
+        if (backgroundTimestamp == 0) {
+            SecureLog.d(TAG, "No background timestamp, skipping lock check");
+            return;
+        }
+        
+        Settings settings = Settings.getInstance(this);
+        int timeoutSeconds = settings.getBackgroundLockTimeout();
+        
+        // If timeout is 0 (disabled), clear timestamp and return
+        if (timeoutSeconds == 0) {
+            backgroundTimestamp = 0;
+            return;
+        }
+        
+        long currentTime = System.currentTimeMillis();
+        long elapsedMillis = currentTime - backgroundTimestamp;
+        long timeoutMillis = timeoutSeconds * 1000L;
+        
+        SecureLog.d(TAG, "Background lock check - elapsed: " + elapsedMillis + "ms, timeout: " + timeoutMillis + "ms");
+        
+        // Clear the timestamp
+        backgroundTimestamp = 0;
+        
+        if (elapsedMillis >= timeoutMillis) {
+            SecureLog.d(TAG, "Background lock timeout expired, locking vault");
+            performBackgroundLock();
+        } else {
+            SecureLog.d(TAG, "Background lock timeout not expired yet");
+        }
+    }
+
+    /**
+     * Perform the background lock - locks the vault and clears memory cache.
+     * This is called when the background timer expires.
+     */
+    private void performBackgroundLock() {
+        NavHostFragment navHostFragment = (NavHostFragment) getSupportFragmentManager().findFragmentById(R.id.nav_host_fragment_content_main);
+        if (navHostFragment == null) {
+            return;
+        }
+        
+        NavController navController = navHostFragment.getNavController();
+        if (navController.getCurrentDestination() != null && 
+            navController.getCurrentDestination().getId() != R.id.password) {
+            
+            // Lock the vault (same as screen off lock)
+            Password.lock(this, false);
+            
+            Settings settings = Settings.getInstance(this);
+            
+            // Navigate to password screen
+            navController.navigate(R.id.password);
         }
     }
 

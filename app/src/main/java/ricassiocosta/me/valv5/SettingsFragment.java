@@ -24,6 +24,7 @@ import androidx.navigation.fragment.NavHostFragment;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.SwitchPreferenceCompat;
+import androidx.preference.ListPreference;
 
 import java.io.IOException;
 import java.security.InvalidAlgorithmParameterException;
@@ -66,6 +67,7 @@ public class SettingsFragment extends PreferenceFragmentCompat implements MenuPr
         SwitchPreferenceCompat exitOnLock = findPreference(Settings.PREF_APP_EXIT_ON_LOCK);
         SwitchPreferenceCompat returnToLastApp = findPreference(Settings.PREF_APP_RETURN_TO_LAST_APP);
         Preference preferredApp = findPreference(Settings.PREF_APP_PREFERRED_APP);
+        ListPreference backgroundLockTimeout = findPreference(Settings.PREF_APP_BACKGROUND_LOCK_TIMEOUT);
 
         FragmentActivity activity = requireActivity();
         Settings settings = Settings.getInstance(activity);
@@ -164,6 +166,15 @@ public class SettingsFragment extends PreferenceFragmentCompat implements MenuPr
             return true;
         });
         updatePreferredAppSummary(preferredApp, settings);
+
+        // Background lock timeout preference
+        updateBackgroundLockTimeoutSummary(backgroundLockTimeout, settings);
+        backgroundLockTimeout.setOnPreferenceChangeListener((preference, newValue) -> {
+            int timeout = Integer.parseInt((String) newValue);
+            settings.setBackgroundLockTimeout(timeout);
+            updateBackgroundLockTimeoutSummary(backgroundLockTimeout, settings, timeout);
+            return true;
+        });
 
         editFolders.setOnPreferenceClickListener(preference -> {
             Dialogs.showEditIncludedFolders(activity, settings, selectedToRemove -> {
@@ -339,6 +350,36 @@ public class SettingsFragment extends PreferenceFragmentCompat implements MenuPr
             }
         } else {
             preference.setSummary("No app selected");
+        }
+    }
+
+    private void updateBackgroundLockTimeoutSummary(ListPreference preference, Settings settings) {
+        updateBackgroundLockTimeoutSummary(preference, settings, settings.getBackgroundLockTimeout());
+    }
+
+    private void updateBackgroundLockTimeoutSummary(ListPreference preference, Settings settings, int timeout) {
+        if (timeout == 0) {
+            preference.setSummary(getString(R.string.settings_background_lock_summary_disabled));
+        } else {
+            String timeString = getTimeoutDisplayString(timeout);
+            preference.setSummary(getString(R.string.settings_background_lock_summary, timeString));
+        }
+        preference.setValue(String.valueOf(timeout));
+    }
+
+    private String getTimeoutDisplayString(int timeoutSeconds) {
+        if (timeoutSeconds == 0) {
+            return getString(R.string.settings_background_lock_disabled);
+        } else if (timeoutSeconds < 60) {
+            return getString(R.string.settings_background_lock_30s);
+        } else if (timeoutSeconds == 60) {
+            return getString(R.string.settings_background_lock_1m);
+        } else if (timeoutSeconds == 120) {
+            return getString(R.string.settings_background_lock_2m);
+        } else if (timeoutSeconds == 300) {
+            return getString(R.string.settings_background_lock_5m);
+        } else {
+            return getString(R.string.settings_background_lock_10m);
         }
     }
 }

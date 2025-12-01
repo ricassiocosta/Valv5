@@ -57,6 +57,10 @@ public class Settings {
     public static final String PREF_APP_PREFERRED_APP = "app_preferred_app";
     public static final String PREF_APP_BIOMETRICS = "app_biometrics";
     public static final String PREF_APP_BIOMETRICS_DATA = "app_biometrics_data";
+    public static final String PREF_APP_BACKGROUND_LOCK_TIMEOUT = "app_background_lock_timeout";
+    
+    // Background lock timeout values in seconds (0 = disabled)
+    public static final int BACKGROUND_LOCK_TIMEOUT_DEFAULT = 30;
 
     private final Context context;
     private static Settings settings;
@@ -181,6 +185,23 @@ public class Settings {
 
     public void setPreferredApp(String packageName) {
         getSharedPrefsEditor().putString(PREF_APP_PREFERRED_APP, packageName).apply();
+    }
+
+    /**
+     * Get the background lock timeout in seconds.
+     * Default is 30 seconds. 0 means disabled.
+     * Maximum is 600 seconds (10 minutes).
+     */
+    public int getBackgroundLockTimeout() {
+        return getSharedPrefs().getInt(PREF_APP_BACKGROUND_LOCK_TIMEOUT, BACKGROUND_LOCK_TIMEOUT_DEFAULT);
+    }
+
+    /**
+     * Set the background lock timeout in seconds.
+     * @param timeoutSeconds The timeout in seconds (0 = disabled, max 600)
+     */
+    public void setBackgroundLockTimeout(int timeoutSeconds) {
+        getSharedPrefsEditor().putInt(PREF_APP_BACKGROUND_LOCK_TIMEOUT, timeoutSeconds).apply();
     }
 
     public void addGalleryDirectory(@NonNull Uri uri, boolean asRootDir, @Nullable IOnDirectoryAdded onDirectoryAdded) {

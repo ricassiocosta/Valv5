@@ -46,6 +46,15 @@
             app:summary="@string/settings_preferred_app_summary"
             app:title="@string/settings_preferred_app_title" />
 
+        <ListPreference
+            android:key="app_background_lock_timeout"
+            android:defaultValue="30"
+            android:entries="@array/background_lock_timeout_entries"
+            android:entryValues="@array/background_lock_timeout_values"
+            app:icon="@drawable/ic_outline_lock_24"
+            app:title="@string/settings_background_lock_title"
+            app:useSimpleSummaryProvider="false" />
+
         <SwitchPreferenceCompat
             android:key="encryption_delete_by_default"
             app:defaultValue="false"

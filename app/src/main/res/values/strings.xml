@@ -43,6 +43,15 @@
     <string name="settings_return_to_last_app_summary_off">Normal auto-lock behavior when the screen turns off.</string>
     <string name="settings_preferred_app_title">Choose preferred app</string>
     <string name="settings_preferred_app_summary">Select which app to open after auto-lock</string>
+    <string name="settings_background_lock_title">Lock when in background</string>
+    <string name="settings_background_lock_summary">Automatically lock the vault after being in background for %1$s</string>
+    <string name="settings_background_lock_summary_disabled">Vault will not lock automatically when in background</string>
+    <string name="settings_background_lock_disabled">Disabled</string>
+    <string name="settings_background_lock_30s">30 seconds</string>
+    <string name="settings_background_lock_1m">1 minute</string>
+    <string name="settings_background_lock_2m">2 minutes</string>
+    <string name="settings_background_lock_5m">5 minutes</string>
+    <string name="settings_background_lock_10m">10 minutes</string>
     <string name="settings_delete_by_default_title">Delete original files by default</string>
     <string name="settings_delete_by_default_summary_on">\"Delete the original files after importing\" is checked by default.</string>
     <string name="settings_delete_by_default_summary_off">\"Delete the original files after importing\" is unchecked by default.</string>
