@@ -24,7 +24,6 @@ import android.graphics.Color;
 import android.graphics.PointF;
 import android.net.Uri;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.View;
@@ -97,6 +96,7 @@ import ricassiocosta.me.valv5.utils.Settings;
 import ricassiocosta.me.valv5.utils.StringStuff;
 import ricassiocosta.me.valv5.utils.Toaster;
 import ricassiocosta.me.valv5.viewmodel.GalleryViewModel;
+import ricassiocosta.me.valv5.security.SecureLog;
 
 public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHolder> {
     private static final String TAG = "GalleryFullscreenAdapter";
@@ -460,7 +460,7 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
                     }
                 } catch (GeneralSecurityException | InvalidPasswordException | JSONException |
                          IOException e) {
-                    Log.e(TAG, "loadImage: error", e);
+                    SecureLog.e(TAG, "loadImage: error", e);
                     e.printStackTrace();
                     context.runOnUiThread(() -> {
                         int i = holder.getBindingAdapterPosition();
@@ -599,7 +599,7 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
             if (lio > 0) {
                 name = name.substring(0, lio);
             }
-            Log.e(TAG, "showEditFile: " + name + ", " + galleryFile.getVersion());
+            SecureLog.e(TAG, "showEditFile: " + name + ", " + galleryFile.getVersion());
             DocumentFile.fromSingleUri(context, galleryFile.getUri()).delete();
             if (galleryFile.getNoteUri() != null) {
                 DocumentFile.fromSingleUri(context, galleryFile.getNoteUri()).delete();
@@ -707,7 +707,7 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
                 galleryFile.setNoteUri(createdFile.getUri());
             }
         } catch (IOException e) {
-            Log.e(TAG, "saveNote: Failed to save note", e);
+            SecureLog.e(TAG, "saveNote: Failed to save note", e);
         }
     }
 

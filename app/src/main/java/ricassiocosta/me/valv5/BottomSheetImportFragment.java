@@ -25,7 +25,7 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.util.Log;
+import ricassiocosta.me.valv5.security.SecureLog;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -232,7 +232,7 @@ public class BottomSheetImportFragment extends BottomSheetDialogFragment {
                     Toaster.getInstance(context).showLong(context.getString(R.string.import_error_password_mismatch));
                     return;
                 } catch (Exception e) {
-                    Log.e(TAG, "Error checking password before import", e);
+                    SecureLog.e(TAG, "Error checking password before import", e);
                     Toaster.getInstance(context).showLong(context.getString(R.string.import_error_folder_check));
                     return;
                 }

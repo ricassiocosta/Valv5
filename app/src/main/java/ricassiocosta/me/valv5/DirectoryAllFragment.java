@@ -4,8 +4,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.View;
+
+import ricassiocosta.me.valv5.security.SecureLog;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
@@ -107,7 +108,7 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
     }
 
     private void findAllFiles() {
-        Log.e(TAG, "findAllFiles: ");
+        SecureLog.d(TAG, "findAllFiles: start");
         foundFiles = 0;
         foundFolders = 0;
         setLoading(true);
@@ -135,14 +136,14 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
                 List<GalleryFile> filesInFolder = FileStuff.getFilesInFolder(activity, uri, true);
                 for (GalleryFile foundFile : filesInFolder) {
                     if (foundFile.isDirectory()) {
-                        Log.e(TAG, "findAllFiles: found " + foundFile.getNameWithPath());
+                        SecureLog.d(TAG, "findAllFiles: found directory");
                         boolean add = true;
                         for (GalleryFile addedFile : filesToSearch) {
                             if (foundFile.getNameWithPath().startsWith(addedFile.getNameWithPath() + "/")) {
                                 // Do not add e.g. folder Pictures/a/b if folder Pictures/a have already been added as it will be searched by a thread in findAllFilesInFolder().
                                 // Prevents showing duplicate files
                                 add = false;
-                                Log.e(TAG, "findAllFiles: not adding nested " + foundFile.getNameWithPath());
+                                SecureLog.d(TAG, "findAllFiles: not adding nested directory");
                                 break;
                             }
                         }
@@ -189,7 +190,7 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
                     throw new RuntimeException(e);
                 }
             }
-            Log.e(TAG, "findAllFiles: joined, found " + files.size() + ", took " + (System.currentTimeMillis() - start));
+            SecureLog.d(TAG, "findAllFiles: joined, found " + SecureLog.safeCount(files.size(), "files") + ", took " + (System.currentTimeMillis() - start) + "ms");
             if (!isSafe()) {
                 return;
             }
@@ -231,7 +232,7 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
 
     @NonNull
     private List<GalleryFile> findAllFilesInFolder(Uri uri) {
-        Log.e(TAG, "findAllFilesInFolder: find all files in " + uri.getLastPathSegment());
+        SecureLog.d(TAG, "findAllFilesInFolder: scanning folder");
         List<GalleryFile> files = new UniqueLinkedList<>();
         FragmentActivity activity = getActivity();
         if (activity == null || !isSafe()) {
@@ -258,7 +259,7 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
                     // Password is wrong for this folder, filter out files
                     filesInFolder.removeIf(f -> !f.isDirectory());
                 } catch (Exception e) {
-                    Log.e(TAG, "Error checking password for folder " + uri, e);
+                    SecureLog.e(TAG, "Error checking password for folder", e);
                     // Treat as wrong password
                     filesInFolder.removeIf(f -> !f.isDirectory());
                 }

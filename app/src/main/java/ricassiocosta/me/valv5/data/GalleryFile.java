@@ -36,6 +36,7 @@ import ricassiocosta.me.valv5.encryption.Encryption;
 import ricassiocosta.me.valv5.exception.InvalidPasswordException;
 import ricassiocosta.me.valv5.interfaces.IOnDone;
 import ricassiocosta.me.valv5.utils.FileStuff;
+import ricassiocosta.me.valv5.security.SecureLog;
 
 public class GalleryFile implements Comparable<GalleryFile> {
     private static final String TAG = "GalleryFile";
@@ -463,7 +464,7 @@ public class GalleryFile implements Comparable<GalleryFile> {
                         }
                         return;
                     } catch (Exception e) {
-                        android.util.Log.e(TAG, "Error checking password for folder " + fileUri, e);
+                        SecureLog.e(TAG, "Error checking password for folder " + fileUri, e);
                         this.fileCount = 0;
                         this.firstFileInDirectoryWithThumb = null;
                         findFilesInDirectoryStatus.set(FIND_FILES_DONE);

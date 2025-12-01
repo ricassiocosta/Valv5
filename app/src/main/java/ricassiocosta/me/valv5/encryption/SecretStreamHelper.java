@@ -18,8 +18,6 @@
 
 package ricassiocosta.me.valv5.encryption;
 
-import android.util.Log;
-
 import androidx.annotation.NonNull;
 
 import com.goterl.lazysodium.LazySodiumAndroid;
@@ -32,6 +30,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 import ricassiocosta.me.valv5.exception.InvalidPasswordException;
+import ricassiocosta.me.valv5.security.SecureLog;
 
 /**
  * Helper class for libsodium's crypto_secretstream_xchacha20poly1305.
@@ -78,7 +77,7 @@ public class SecretStreamHelper {
         if (lazySodium == null) {
             SodiumAndroid sodium = new SodiumAndroid();
             lazySodium = new LazySodiumAndroid(sodium);
-            Log.d(TAG, "Lazysodium initialized");
+            SecureLog.d(TAG, "Lazysodium initialized");
         }
         return lazySodium;
     }

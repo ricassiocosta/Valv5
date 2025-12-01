@@ -4,7 +4,7 @@ import static androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRON
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.util.Log;
+import ricassiocosta.me.valv5.security.SecureLog;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
@@ -75,14 +75,14 @@ public class SettingsFragment extends PreferenceFragmentCompat implements MenuPr
             @Override
             public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
                 super.onAuthenticationError(errorCode, errString);
-                Log.e(TAG, "onAuthenticationError: " + errorCode + ", " + errString);
+                SecureLog.e(TAG, "onAuthenticationError: " + errorCode + ", " + errString);
                 biometrics.setChecked(false);
             }
 
             @Override
             public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
                 super.onAuthenticationSucceeded(result);
-                Log.e(TAG, "onAuthenticationSucceeded: " + result);
+                SecureLog.e(TAG, "onAuthenticationSucceeded: " + result);
                 BiometricPrompt.CryptoObject cryptoObject = result.getCryptoObject();
                 if (cryptoObject != null) {
                     try {
@@ -103,7 +103,7 @@ public class SettingsFragment extends PreferenceFragmentCompat implements MenuPr
             @Override
             public void onAuthenticationFailed() {
                 super.onAuthenticationFailed();
-                Log.e(TAG, "onAuthenticationFailed: ");
+                SecureLog.e(TAG, "onAuthenticationFailed: ");
             }
         });
 
@@ -312,7 +312,7 @@ public class SettingsFragment extends PreferenceFragmentCompat implements MenuPr
                     .show();
                     
         } catch (Exception e) {
-            android.util.Log.e("SettingsFragment", "Error loading apps", e);
+            SecureLog.e("SettingsFragment", "Error loading apps", e);
             Toaster.getInstance(activity).showLong("Error loading apps: " + e.getMessage());
         }
     }

@@ -5,8 +5,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.View;
+
+import ricassiocosta.me.valv5.security.SecureLog;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
@@ -48,7 +49,7 @@ public class DirectoryFragment extends DirectoryBaseFragment {
 
     private final ActivityResultLauncher<String[]> resultLauncherOpenDocuments = registerForActivityResult(new ActivityResultContracts.OpenMultipleDocuments(), uris -> {
         if (uris != null && !uris.isEmpty()) {
-            Log.e(TAG, "onActivityResult: " + uris.size());
+            SecureLog.d(TAG, "onActivityResult: " + SecureLog.safeCount(uris.size(), "files"));
             Context context = getContext();
             if (context == null || !isSafe()) {
                 return;
@@ -101,8 +102,8 @@ public class DirectoryFragment extends DirectoryBaseFragment {
             galleryViewModel.setDirectory(arguments.getString(ARGUMENT_DIRECTORY), context);
         }
         galleryViewModel.setAllFolder(false);
-        Log.e(TAG, "init: directory: " + galleryViewModel.getDirectory());
-        Log.e(TAG, "init: nested path: " + galleryViewModel.getNestedPath());
+        SecureLog.d(TAG, "init: directory: " + SecureLog.redactPath(galleryViewModel.getDirectory()));
+        SecureLog.d(TAG, "init: nested path: " + SecureLog.redactPath(galleryViewModel.getNestedPath()));
         if (galleryViewModel.getCurrentDirectoryUri() != null) {
             galleryViewModel.setRootDir(false);
             if (!initActionBar(false)) { // getSupportActionBar() is null directly after orientation change
@@ -249,7 +250,7 @@ public class DirectoryFragment extends DirectoryBaseFragment {
                     for (GalleryFile f : galleryGridAdapter.getSelectedFiles()) {
                         FragmentActivity activity = requireActivity();
                         settings.removeGalleryDirectory(f.getUri());
-                        Log.e(TAG, "onRemoveFolderClicked: remove " + f.getUri());
+                        SecureLog.d(TAG, "onRemoveFolderClicked: remove " + SecureLog.redactUri(f.getUri()));
                         try {
                             activity.getContentResolver().releasePersistableUriPermission(f.getUri(), Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
                         } catch (SecurityException e) {

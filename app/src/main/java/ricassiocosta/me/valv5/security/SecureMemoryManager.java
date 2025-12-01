@@ -20,7 +20,6 @@ package ricassiocosta.me.valv5.security;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.util.Log;
 import android.util.LruCache;
 
 import androidx.annotation.NonNull;
@@ -43,6 +42,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import ricassiocosta.me.valv5.MainActivity;
 import ricassiocosta.me.valv5.utils.FileStuff;
+import ricassiocosta.me.valv5.security.SecureLog;
 
 /**
  * Centralized manager for secure memory operations.
@@ -217,7 +217,7 @@ public class SecureMemoryManager {
             }
             buffer.clear();
         } catch (Exception e) {
-            Log.w(TAG, "Failed to wipe ByteBuffer", e);
+            SecureLog.w(TAG, "Failed to wipe ByteBuffer", e);
         }
     }
     
@@ -236,7 +236,7 @@ public class SecureMemoryManager {
             }
             buffer.clear();
         } catch (Exception e) {
-            Log.w(TAG, "Failed to wipe CharBuffer", e);
+            SecureLog.w(TAG, "Failed to wipe CharBuffer", e);
         }
     }
     
@@ -253,7 +253,7 @@ public class SecureMemoryManager {
             bitmap.eraseColor(android.graphics.Color.BLACK);
             bitmap.recycle();
         } catch (Exception e) {
-            Log.w(TAG, "Failed to wipe Bitmap", e);
+            SecureLog.w(TAG, "Failed to wipe Bitmap", e);
         }
     }
     
@@ -265,7 +265,7 @@ public class SecureMemoryManager {
      * Call this on folder change.
      */
     public void wipeSensitiveBuffers() {
-        Log.d(TAG, "Wiping sensitive buffers only");
+        SecureLog.d(TAG, "Wiping sensitive buffers only");
         
         int wipedByteArrays = 0;
         int wipedCharArrays = 0;
@@ -307,7 +307,7 @@ public class SecureMemoryManager {
             bufferIterator.remove();
         }
         
-        Log.d(TAG, String.format(
+        SecureLog.d(TAG, String.format(
                 "Wiped sensitive: %d byte arrays, %d char arrays, %d ByteBuffers",
                 wipedByteArrays, wipedCharArrays, wipedByteBuffers
         ));
@@ -318,7 +318,7 @@ public class SecureMemoryManager {
      * Call this on app close/lock only.
      */
     public void wipeAll() {
-        Log.d(TAG, "Wiping all registered sensitive memory");
+        SecureLog.d(TAG, "Wiping all registered sensitive memory");
         
         int wipedByteArrays = 0;
         int wipedCharArrays = 0;
@@ -389,7 +389,7 @@ public class SecureMemoryManager {
         // Force garbage collection to help clear unreferenced sensitive data
         System.gc();
         
-        Log.d(TAG, String.format(
+        SecureLog.d(TAG, String.format(
                 "Wiped: %d byte arrays, %d char arrays, %d ByteBuffers, %d Bitmaps, %d caches",
                 wipedByteArrays, wipedCharArrays, wipedByteBuffers, wipedBitmaps, clearedCaches
         ));
@@ -400,7 +400,7 @@ public class SecureMemoryManager {
      * Call this when the app is closing or locking.
      */
     public void performFullCleanup(@Nullable Context context) {
-        Log.d(TAG, "Performing full memory cleanup");
+        SecureLog.d(TAG, "Performing full memory cleanup");
         
         // Wipe all registered buffers
         wipeAll();
@@ -410,7 +410,7 @@ public class SecureMemoryManager {
             try {
                 Glide.get(context).clearMemory();
             } catch (Exception e) {
-                Log.w(TAG, "Failed to clear Glide memory cache", e);
+                SecureLog.w(TAG, "Failed to clear Glide memory cache", e);
             }
             
             // Delete file cache
@@ -430,7 +430,7 @@ public class SecureMemoryManager {
      * Note: Does NOT clear Glide cache or LruCaches as they would affect other fragments.
      */
     public void onFolderChanged(@Nullable Context context) {
-        Log.d(TAG, "Folder changed - performing sensitive buffer cleanup");
+        SecureLog.d(TAG, "Folder changed - performing sensitive buffer cleanup");
         
         // Wipe only sensitive buffers (keys, passwords, decrypted content)
         // Do NOT clear caches or Glide - they are needed by other fragments

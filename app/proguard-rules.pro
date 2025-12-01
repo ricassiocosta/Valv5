@@ -30,7 +30,7 @@
 -keep class com.goterl.lazysodium.** { *; }
 -keep class com.sun.jna.ptr.** { *; }
 
-# remove all log prints
+# remove all log prints (android.util.Log)
 -assumenosideeffects class android.util.Log {
     public static boolean isLoggable(java.lang.String, int);
     public static int v(...);
@@ -38,4 +38,20 @@
     public static int i(...);
     public static int w(...);
     public static int e(...);
+}
+
+# remove all SecureLog calls in release builds
+# SecureLog already checks BuildConfig.DEBUG, but this provides double protection
+-assumenosideeffects class ricassiocosta.me.valv5.security.SecureLog {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+    public static int w(...);
+    public static int e(...);
+    public static int wtf(...);
+    public static java.lang.String sanitize(...);
+    public static java.lang.String redactUri(...);
+    public static java.lang.String redactPath(...);
+    public static java.lang.String redactBytes(...);
+    public static java.lang.String safeCount(...);
 }

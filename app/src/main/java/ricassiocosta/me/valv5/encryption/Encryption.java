@@ -23,7 +23,6 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
-import android.util.Log;
 import android.util.Pair;
 
 import androidx.annotation.NonNull;
@@ -100,6 +99,7 @@ import ricassiocosta.me.valv5.security.SecureMemoryManager;
 import ricassiocosta.me.valv5.utils.FileStuff;
 import ricassiocosta.me.valv5.utils.Settings;
 import ricassiocosta.me.valv5.utils.StringStuff;
+import ricassiocosta.me.valv5.security.SecureLog;
 
 public class Encryption {
     private static final String TAG = "Encryption";
@@ -265,7 +265,7 @@ public class Encryption {
             try {
                 InputStream fileInputStream = context.getContentResolver().openInputStream(sourceFile.getUri());
                 if (fileInputStream == null) {
-                    Log.e(TAG, "importFileToDirectory: could not open source file");
+                    SecureLog.e(TAG, "importFileToDirectory: could not open source file");
                     return null;
                 }
 
@@ -281,7 +281,7 @@ public class Encryption {
                             .submit()
                             .get();
                 } catch (ExecutionException | InterruptedException e) {
-                    Log.w(TAG, "importFileToDirectory: could not generate thumbnail", e);
+                    SecureLog.w(TAG, "importFileToDirectory: could not generate thumbnail", e);
                 }
 
                 // Convert thumbnail to byte array (JPEG)
@@ -313,7 +313,7 @@ public class Encryption {
                 return result;
 
             } catch (GeneralSecurityException | IOException | JSONException e) {
-                Log.e(TAG, "importFileToDirectory: V5 composite file creation failed", e);
+                SecureLog.e(TAG, "importFileToDirectory: V5 composite file creation failed", e);
                 return null;
             }
         }
@@ -357,7 +357,7 @@ public class Encryption {
             String sourceFileName = fileNameWithoutSuffix + FileType.TEXT_V5.extension;
             createTextFile(context, text, file, password, sourceFileName, version, fileType);
         } catch (GeneralSecurityException | IOException | JSONException e) {
-            Log.e(TAG, "importTextToDirectory: failed " + e.getMessage());
+            SecureLog.e(TAG, "importTextToDirectory: failed " + e.getMessage());
             e.printStackTrace();
             file.delete();
             return null;
@@ -657,7 +657,7 @@ public class Encryption {
         // Create temporary file first (atomic write pattern)
         DocumentFile tmpFile = outputDirectory.createFile("", tmpFileName);
         if (tmpFile == null) {
-            Log.e(TAG, "createCompositeFile: could not create temporary file");
+            SecureLog.e(TAG, "createCompositeFile: could not create temporary file");
             return null;
         }
 
@@ -676,7 +676,7 @@ public class Encryption {
             // Atomic rename: .tmp → .valv
             DocumentFile finalFile = outputDirectory.createFile("", fileName);
             if (finalFile == null) {
-                Log.e(TAG, "createCompositeFile: could not create final file");
+                SecureLog.e(TAG, "createCompositeFile: could not create final file");
                 tmpFile.delete();
                 return null;
             }
@@ -699,7 +699,7 @@ public class Encryption {
             return finalFile;
 
         } catch (Exception e) {
-            Log.e(TAG, "createCompositeFile: error writing composite file", e);
+            SecureLog.e(TAG, "createCompositeFile: error writing composite file", e);
             tmpFile.delete();
             throw e;
         }
@@ -1739,7 +1739,7 @@ public class Encryption {
                 e.printStackTrace();
                 context.runOnUiThread(() -> onUriResult.onError(e));
             } catch (InvalidPasswordException e) {
-                Log.e(TAG, "decryptToCache: catch invalid password");
+                SecureLog.e(TAG, "decryptToCache: catch invalid password");
                 e.printStackTrace();
                 context.runOnUiThread(() -> onUriResult.onInvalidPassword(e));
             }
@@ -1755,7 +1755,7 @@ public class Encryption {
                 galleryFile.setOriginalName(originalFileName);
             } catch (FileNotFoundException e) {
                 e.printStackTrace();
-                Log.e(TAG, "decryptAndExport: failed to decrypt original name");
+                SecureLog.e(TAG, "decryptAndExport: failed to decrypt original name");
             }
         }
         DocumentFile file = documentFile.createFile(isVideo ? "video/*" : "image/*", originalFileName != null ? originalFileName : (System.currentTimeMillis() + "_" + FileStuff.getFilenameFromUri(encryptedInput, true)));

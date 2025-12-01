@@ -27,6 +27,8 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 
+import ricassiocosta.me.valv5.security.SecureLog;
+
 /**
  * V5 Composite Streams wrapper for reading sections from encrypted composite files.
  *
@@ -153,7 +155,7 @@ public class CompositeStreams {
                     fileInfo = info;
                 } else {
                     // No FILE section found, this shouldn't happen
-                    android.util.Log.e(TAG, "hasThumbnailSection: No FILE section found!");
+                    SecureLog.e(TAG, "hasThumbnailSection: No FILE section found!");
                     return false;
                 }
             }

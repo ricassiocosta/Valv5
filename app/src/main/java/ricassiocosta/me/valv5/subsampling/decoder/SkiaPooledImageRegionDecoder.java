@@ -28,7 +28,6 @@ import android.graphics.BitmapRegionDecoder;
 import android.graphics.Point;
 import android.graphics.Rect;
 import android.net.Uri;
-import android.util.Log;
 
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
@@ -47,6 +46,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import ricassiocosta.me.valv5.encryption.Encryption;
 import ricassiocosta.me.valv5.subsampling.MySubsamplingScaleImageView;
+import ricassiocosta.me.valv5.security.SecureLog;
 
 /**
  * <p>
@@ -194,7 +194,7 @@ public class SkiaPooledImageRegionDecoder implements ImageRegionDecoder {
             
             decoder = BitmapRegionDecoder.newInstance(decoderInput, false);
         } catch (Exception e) {
-            Log.e(TAG, "initialiseDecoder: Exception occurred", e);
+            SecureLog.e(TAG, "initialiseDecoder: Exception occurred", e);
             throw e;
         } finally {
             if (streams != null) {
@@ -415,7 +415,7 @@ public class SkiaPooledImageRegionDecoder implements ImageRegionDecoder {
 
     private void debug(String message) {
         if (debug) {
-            Log.d(TAG, message);
+            SecureLog.d(TAG, message);
         }
     }
 

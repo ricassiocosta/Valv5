@@ -25,7 +25,6 @@ import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.DocumentsContract;
-import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -51,6 +50,7 @@ import ricassiocosta.me.valv5.data.GalleryFile;
 import ricassiocosta.me.valv5.data.Password;
 import ricassiocosta.me.valv5.encryption.Encryption;
 import ricassiocosta.me.valv5.exception.InvalidPasswordException;
+import ricassiocosta.me.valv5.security.SecureLog;
 
 import static ricassiocosta.me.valv5.encryption.Encryption.SUFFIX_V5;
 
@@ -59,7 +59,6 @@ public class FileStuff {
 
     @NonNull
     public static List<GalleryFile> getFilesInFolder(Context context, Uri pickedDir, boolean checkDecryptable) {
-        //Log.e(TAG, "getFilesInFolder: " + pickedDir);
         Uri realUri = DocumentsContract.buildChildDocumentsUriUsingTree(pickedDir, DocumentsContract.getDocumentId(pickedDir));
         List<CursorFile> files = new ArrayList<>();
         Cursor c = context.getContentResolver().query(
@@ -284,7 +283,7 @@ public class FileStuff {
 
         public static boolean copyTo(Context context, GalleryFile sourceFile, DocumentFile directory) {
         if (sourceFile.getUri().getLastPathSegment().equals(directory.getUri().getLastPathSegment() + "/" + sourceFile.getEncryptedName())) {
-            Log.e(TAG, "moveTo: can't copy " + sourceFile.getUri().getLastPathSegment() + " to the same folder");
+            SecureLog.e(TAG, "moveTo: can't copy " + sourceFile.getUri().getLastPathSegment() + " to the same folder");
             return false;
         }
         String generatedName = StringStuff.getRandomFileName();
@@ -296,7 +295,7 @@ public class FileStuff {
         DocumentFile file = directory.createFile("", fileName);
         
         if (file == null) {
-            Log.e(TAG, "copyTo: could not create file from " + sourceFile.getUri());
+            SecureLog.e(TAG, "copyTo: could not create file from " + sourceFile.getUri());
             return false;
         }
         return writeTo(context, sourceFile.getUri(), file.getUri());
@@ -304,7 +303,7 @@ public class FileStuff {
 
     public static boolean moveTo(Context context, GalleryFile sourceFile, DocumentFile directory) {
         if (sourceFile.getUri().getLastPathSegment().equals(directory.getUri().getLastPathSegment() + "/" + sourceFile.getEncryptedName())) {
-            Log.e(TAG, "moveTo: can't move " + sourceFile.getUri().getLastPathSegment() + " to the same folder");
+            SecureLog.e(TAG, "moveTo: can't move " + sourceFile.getUri().getLastPathSegment() + " to the same folder");
             return false;
         }
         String nameWithoutPrefix = getNameWithoutPrefix(sourceFile.getEncryptedName());
@@ -316,7 +315,7 @@ public class FileStuff {
         DocumentFile file = directory.createFile("", fileName);
 
         if (file == null) {
-            Log.e(TAG, "moveTo: could not create file from " + sourceFile.getUri());
+            SecureLog.e(TAG, "moveTo: could not create file from " + sourceFile.getUri());
             return false;
         }
         return writeTo(context, sourceFile.getUri(), file.getUri());
@@ -337,7 +336,7 @@ public class FileStuff {
             } catch (IOException ignored) {
             }
         } catch (IOException e) {
-            Log.e(TAG, "writeTo: failed to write: " + e.getMessage());
+            SecureLog.e(TAG, "writeTo: failed to write: " + e.getMessage());
             e.printStackTrace();
             return false;
         }

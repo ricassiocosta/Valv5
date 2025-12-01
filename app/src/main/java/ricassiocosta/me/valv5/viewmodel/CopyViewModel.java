@@ -19,7 +19,8 @@
 package ricassiocosta.me.valv5.viewmodel;
 
 import android.net.Uri;
-import android.util.Log;
+
+import ricassiocosta.me.valv5.security.SecureLog;
 
 import androidx.annotation.NonNull;
 import androidx.documentfile.provider.DocumentFile;
@@ -125,7 +126,7 @@ public class CopyViewModel extends ViewModel {
     }
 
     public void cancel() {
-        Log.e(TAG, "cancel: ");
+        SecureLog.d(TAG, "cancel");
         interrupted.set(true);
         setRunning(false);
         if (thread != null) {
@@ -134,7 +135,7 @@ public class CopyViewModel extends ViewModel {
     }
 
     public void start(FragmentActivity activity) {
-        Log.e(TAG, "start: ");
+        SecureLog.d(TAG, "start");
         if (thread != null) {
             thread.interrupt();
         }
@@ -150,7 +151,7 @@ public class CopyViewModel extends ViewModel {
                 }
             };
 
-            Log.e(TAG, "start: " + destinationUri);
+            SecureLog.d(TAG, "start: copying " + SecureLog.safeCount(files.size(), "files"));
             DocumentFile destinationDocument = DocumentFile.fromTreeUri(activity, destinationUri);
             for (GalleryFile f : files) {
                 boolean success = FileStuff.copyTo(activity, f, destinationDocument);

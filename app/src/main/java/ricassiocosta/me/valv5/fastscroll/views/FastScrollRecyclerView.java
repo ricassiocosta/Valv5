@@ -21,7 +21,6 @@ import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Typeface;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.util.SparseIntArray;
 import android.view.MotionEvent;
 import android.view.View;
@@ -37,6 +36,7 @@ import androidx.recyclerview.widget.StaggeredGridLayoutManager;
 import ricassiocosta.me.valv5.R;
 import ricassiocosta.me.valv5.fastscroll.OnFastScrollStateChangeListener;
 import ricassiocosta.me.valv5.fastscroll.Utils;
+import ricassiocosta.me.valv5.security.SecureLog;
 
 public class FastScrollRecyclerView extends RecyclerView implements RecyclerView.OnItemTouchListener {
 
@@ -369,7 +369,7 @@ public class FastScrollRecyclerView extends RecyclerView implements RecyclerView
             }
 
             // Should never happen
-            Log.w(TAG, "Failed to find a view at the provided scroll fraction (" + touchFraction + ")");
+            SecureLog.w(TAG, "Failed to find a view at the provided scroll fraction (" + touchFraction + ")");
             return touchFraction * getAdapter().getItemCount();
         } else {
             return getAdapter().getItemCount() * touchFraction;

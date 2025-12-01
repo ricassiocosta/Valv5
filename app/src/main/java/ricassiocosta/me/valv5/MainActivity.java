@@ -9,9 +9,10 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
+
+import ricassiocosta.me.valv5.security.SecureLog;
 
 
 import androidx.activity.EdgeToEdge;
@@ -122,7 +123,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void addSharedFiles(@NonNull List<DocumentFile> documentFiles) {
-        Log.e(TAG, "addSharedFiles: " + documentFiles.size());
+        SecureLog.d(TAG, "addSharedFiles: " + SecureLog.safeCount(documentFiles.size(), "files"));
         ShareViewModel shareViewModel = new ViewModelProvider(this).get(ShareViewModel.class);
         shareViewModel.clear();
         shareViewModel.getFilesReceived().addAll(documentFiles);
@@ -217,7 +218,7 @@ public class MainActivity extends AppCompatActivity {
                 return true;
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error opening app: " + packageName, e);
+            SecureLog.e(TAG, "Error opening app", e);
         }
         return false;
     }
@@ -268,7 +269,7 @@ public class MainActivity extends AppCompatActivity {
             // Como agora o usuário configura manualmente o app preferido,
             // este método pode ser simplificado ou removido.
             // Mantemos apenas para compatibilidade futura.
-            Log.d(TAG, "Auto-lock triggered - using user configured preferred app");
+            SecureLog.d(TAG, "Auto-lock triggered - using user configured preferred app");
         }
         
         private boolean isValidApp(String packageName) {

@@ -18,7 +18,7 @@
 
 package ricassiocosta.me.valv5.viewmodel;
 
-import android.util.Log;
+import ricassiocosta.me.valv5.security.SecureLog;
 
 import androidx.annotation.NonNull;
 import androidx.fragment.app.FragmentActivity;
@@ -90,7 +90,7 @@ public class DeleteViewModel extends ViewModel {
     }
 
     public void cancelDelete() {
-        Log.e(TAG, "cancelDelete: ");
+        SecureLog.d(TAG, "cancelDelete");
         interrupted.set(true);
         setDeleting(false);
         if (thread != null) {
@@ -99,7 +99,7 @@ public class DeleteViewModel extends ViewModel {
     }
 
     public void startDelete(FragmentActivity activity) {
-        Log.e(TAG, "startDelete: ");
+        SecureLog.d(TAG, "startDelete");
         if (thread != null) {
             thread.interrupt();
         }

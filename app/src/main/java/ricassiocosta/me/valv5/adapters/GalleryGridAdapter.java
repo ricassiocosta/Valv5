@@ -23,7 +23,7 @@ import android.graphics.drawable.Drawable;
 import android.icu.text.SimpleDateFormat;
 import android.net.Uri;
 import android.os.Bundle;
-import android.util.Log;
+import ricassiocosta.me.valv5.security.SecureLog;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -614,7 +614,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             pendingTasks.put(fileUri, task);
         } catch (java.util.concurrent.RejectedExecutionException e) {
             // Executor was shutdown, ignore
-            Log.w(TAG, "Executor shutdown, ignoring thumbnail load request");
+            SecureLog.w(TAG, "Executor shutdown, ignoring thumbnail load request");
         }
     }
     

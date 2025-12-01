@@ -22,7 +22,6 @@ import android.content.Intent;
 import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -32,6 +31,8 @@ import android.view.ViewGroup;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
 import android.view.animation.LinearInterpolator;
+
+import ricassiocosta.me.valv5.security.SecureLog;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -110,7 +111,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
-        Log.e(TAG, "onCreate: ");
+        SecureLog.d(TAG, "onCreate");
         super.onCreate(savedInstanceState);
 
         navController = NavHostFragment.findNavController(this);
@@ -131,7 +132,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
-        Log.e(TAG, "onCreateView: ");
+        SecureLog.d(TAG, "onCreateView");
         binding = FragmentDirectoryBinding.inflate(inflater, container, false);
         return binding.getRoot();
     }
@@ -148,7 +149,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         copyViewModel = new ViewModelProvider(this).get(CopyViewModel.class);
         moveViewModel = new ViewModelProvider(this).get(MoveViewModel.class);
         navController = NavHostFragment.findNavController(this);
-        Log.e(TAG, "onViewCreated: locked? " + passwordViewModel.isLocked());
+        SecureLog.d(TAG, "onViewCreated: locked? " + passwordViewModel.isLocked());
         if (passwordViewModel.isLocked()) {
             Password.lock(requireActivity(), false);
             navController.navigate(R.id.password);
@@ -200,7 +201,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
 
     void initViewModels() {
         importViewModel.setOnImportDoneFragment((destinationUri, sameDirectory, importedCount, failedCount, thumbErrorCount, importedFiles) -> {
-            Log.e(TAG, "setOnImportDoneFragment: " + destinationUri + ", " + sameDirectory + ", " + importedCount + ", " + failedCount + ", " + thumbErrorCount);
+            SecureLog.d(TAG, "setOnImportDoneFragment: sameDirectory=" + sameDirectory + ", " + SecureLog.safeCount(importedCount, "imported") + ", " + SecureLog.safeCount(failedCount, "failed"));
 
             FragmentActivity activity = getActivity();
             if (activity == null || activity.isDestroyed()) {
@@ -233,7 +234,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         });
 
         deleteViewModel.setOnDeleteDoneFragment(deletedFiles -> {
-            Log.e(TAG, "setOnDeleteDoneFragment:  deleted " + deletedFiles.size());
+            SecureLog.d(TAG, "setOnDeleteDoneFragment: " + SecureLog.safeCount(deletedFiles.size(), "deleted"));
             FragmentActivity activity = getActivity();
             if (activity == null || activity.isDestroyed()) {
                 return;
@@ -258,7 +259,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         });
 
         exportViewModel.setOnDoneFragment(processedFiles -> {
-            Log.e(TAG, "setOnExportDoneFragment: exported " + processedFiles.size());
+            SecureLog.d(TAG, "setOnExportDoneFragment: " + SecureLog.safeCount(processedFiles.size(), "exported"));
             FragmentActivity activity = getActivity();
             if (activity == null || activity.isDestroyed()) {
                 return;
@@ -270,7 +271,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         });
 
         copyViewModel.setOnDoneFragment(processedFiles -> {
-            Log.e(TAG, "setOnDoneFragment: copied " + processedFiles.size());
+            SecureLog.d(TAG, "setOnDoneFragment: " + SecureLog.safeCount(processedFiles.size(), "copied"));
             FragmentActivity activity = getActivity();
             if (activity == null || activity.isDestroyed()) {
                 return;
@@ -282,7 +283,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         });
 
         moveViewModel.setOnDoneFragment(processedFiles -> {
-            Log.e(TAG, "setOnDoneFragment: moved " + processedFiles.size());
+            SecureLog.d(TAG, "setOnDoneFragment: " + SecureLog.safeCount(processedFiles.size(), "moved"));
             FragmentActivity activity = getActivity();
             if (activity == null || activity.isDestroyed()) {
                 return;
@@ -313,12 +314,12 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     abstract void addRootFolders();
 
     void findFilesIn(Uri directoryUri) {
-        Log.e(TAG, "findFilesIn: " + directoryUri);
+        SecureLog.d(TAG, "findFilesIn: scanning directory");
         setLoading(true);
         new Thread(() -> {
             FragmentActivity activity = getActivity();
             if (activity == null || !isSafe()) {
-                Log.e(TAG, "findFilesIn: not safe, return");
+                SecureLog.d(TAG, "findFilesIn: not safe, return");
                 return;
             }
             List<GalleryFile> galleryFiles = FileStuff.getFilesInFolder(activity, directoryUri, true);
@@ -343,7 +344,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                         galleryFiles.removeIf(galleryFile -> !galleryFile.isDirectory());
                     } catch (Exception e) {
                         // Log other errors, and treat as if password was wrong by clearing non-directories
-                        Log.e(TAG, "Error checking password for folder " + directoryUri, e);
+                        SecureLog.e(TAG, "Error checking password for folder", e);
                         galleryFiles.removeIf(galleryFile -> !galleryFile.isDirectory());
                     }
                 }
@@ -393,7 +394,6 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         galleryPagerAdapter = new GalleryPagerAdapter(requireActivity(), galleryViewModel.getGalleryFiles(), pos -> galleryGridAdapter.notifyItemRemoved(pos), galleryViewModel.getCurrentDocumentDirectory(),
                 galleryViewModel.isAllFolder(), galleryViewModel.getNestedPath(), galleryViewModel);
         binding.viewPager.setAdapter(galleryPagerAdapter);
-        //Log.e(TAG, "setupViewpager: " + viewModel.getCurrentPosition() + " " + viewModel.isFullscreen());
         binding.viewPager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
             @Override
             public void onPageSelected(int position) {
@@ -414,7 +414,6 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     }
 
     void showViewpager(boolean show, int pos, boolean animate) {
-        //Log.e(TAG, "showViewpager: " + show + " " + pos);
         galleryViewModel.setViewpagerVisible(show);
         galleryPagerAdapter.showPager(show);
         FragmentActivity activity = getActivity();

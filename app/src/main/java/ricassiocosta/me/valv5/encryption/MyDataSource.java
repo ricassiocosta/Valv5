@@ -20,7 +20,6 @@ package ricassiocosta.me.valv5.encryption;
 
 import android.content.Context;
 import android.net.Uri;
-import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -39,6 +38,7 @@ import javax.crypto.CipherInputStream;
 
 import ricassiocosta.me.valv5.data.Password;
 import ricassiocosta.me.valv5.exception.InvalidPasswordException;
+import ricassiocosta.me.valv5.security.SecureLog;
 
 @OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)
 public class MyDataSource implements DataSource {
@@ -65,14 +65,14 @@ public class MyDataSource implements DataSource {
             streams = Encryption.getCipherInputStream(fileStream, password.getPassword(), false, version);
         } catch (GeneralSecurityException | InvalidPasswordException | JSONException e) {
             e.printStackTrace();
-            Log.e(TAG, "open error", e);
+            SecureLog.e(TAG, "open error", e);
             return 0;
         }
 
         // Use streaming for V5 to avoid loading entire file into memory
         cachedInputStream = streams.getInputStreamStreaming();
         if (cachedInputStream == null) {
-            Log.e(TAG, "open: inputStream is null!");
+            SecureLog.e(TAG, "open: inputStream is null!");
             return 0;
         }
 
@@ -87,7 +87,7 @@ public class MyDataSource implements DataSource {
         while (skipped < skipBytes) {
             int read = inputStream.read();
             if (read == -1) {
-                Log.w(TAG, "forceSkip: EOF reached after " + skipped + " bytes");
+                SecureLog.w(TAG, "forceSkip: EOF reached after " + skipped + " bytes");
                 break;
             }
             skipped++;
@@ -103,7 +103,7 @@ public class MyDataSource implements DataSource {
 
         // Use the cached input stream instead of calling getInputStream() each time
         if (cachedInputStream == null) {
-            Log.e(TAG, "read: cachedInputStream is null!");
+            SecureLog.e(TAG, "read: cachedInputStream is null!");
             return -1;
         }
         int bytesRead = cachedInputStream.read(buffer, offset, length);

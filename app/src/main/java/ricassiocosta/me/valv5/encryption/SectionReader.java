@@ -26,6 +26,8 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 
+import ricassiocosta.me.valv5.security.SecureLog;
+
 /**
  * V5 Section Reader for parsing encrypted files with multiple internal sections.
  *
@@ -89,7 +91,7 @@ public class SectionReader {
 
         // Validate section type
         if (!isValidSectionType(sectionType)) {
-            android.util.Log.e(TAG, "readNextSection: Invalid section type: 0x" + String.format("%02X", sectionType));
+            SecureLog.e(TAG, "readNextSection: Invalid section type: 0x" + String.format("%02X", sectionType));
             throw new IOException("Invalid section type: 0x" + String.format("%02X", sectionType));
         }
 

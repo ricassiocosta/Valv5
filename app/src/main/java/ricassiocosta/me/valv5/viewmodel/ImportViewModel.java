@@ -20,8 +20,9 @@ package ricassiocosta.me.valv5.viewmodel;
 
 import android.icu.text.DecimalFormat;
 import android.net.Uri;
-import android.util.Log;
 import android.util.Pair;
+
+import ricassiocosta.me.valv5.security.SecureLog;
 
 import androidx.annotation.NonNull;
 import androidx.documentfile.provider.DocumentFile;
@@ -165,7 +166,7 @@ public class ImportViewModel extends ViewModel {
     }
 
     public void cancelImport() {
-        Log.e(TAG, "cancelImport: ");
+        SecureLog.d(TAG, "cancelImport");
         interrupted.set(true);
         setImporting(false);
         setImportToUri(null);
@@ -175,7 +176,7 @@ public class ImportViewModel extends ViewModel {
     }
 
     public void startImport(FragmentActivity activity) {
-        Log.e(TAG, "startImport: ");
+        SecureLog.d(TAG, "startImport");
         if (importThread != null) {
             importThread.interrupt();
         }
@@ -205,7 +206,7 @@ public class ImportViewModel extends ViewModel {
                     if (onImportDoneFragment != null) {
                         onImportDoneFragment.onDone(importToUri, sameDirectory, progress[0] - 1, errors, thumbErrors, importedFiles);
                     }
-                    Log.e(TAG, "startImport: interrupted, stop");
+                    SecureLog.d(TAG, "startImport: interrupted, stop");
                     break;
                 }
                 DocumentFile importedFile = null;
@@ -233,7 +234,7 @@ public class ImportViewModel extends ViewModel {
                     if (onImportDoneFragment != null) {
                         onImportDoneFragment.onDone(importToUri, sameDirectory, progress[0] - 1, errors, thumbErrors, importedFiles);
                     }
-                    Log.e(TAG, "startImport: interrupted, stop");
+                    SecureLog.d(TAG, "startImport: interrupted, stop");
                     break;
                 }
 

@@ -19,7 +19,6 @@
 package ricassiocosta.me.valv5.data;
 
 import android.content.Context;
-import android.util.Log;
 
 import com.bumptech.glide.Glide;
 

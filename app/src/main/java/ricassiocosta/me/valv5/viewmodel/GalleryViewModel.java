@@ -20,7 +20,8 @@ package ricassiocosta.me.valv5.viewmodel;
 
 import android.content.Context;
 import android.net.Uri;
-import android.util.Log;
+
+import ricassiocosta.me.valv5.security.SecureLog;
 
 import androidx.annotation.NonNull;
 import androidx.documentfile.provider.DocumentFile;
@@ -100,7 +101,7 @@ public class GalleryViewModel extends ViewModel {
             currentDirectoryUri = null;
             currentDocumentDirectory = null;
         }
-        Log.e(TAG, "currentDocumentDirectory: " + currentDocumentDirectory);
+        SecureLog.d(TAG, "currentDocumentDirectory: " + (currentDocumentDirectory != null ? "set" : "null"));
     }
 
     public void setRootDir(boolean rootDir) {

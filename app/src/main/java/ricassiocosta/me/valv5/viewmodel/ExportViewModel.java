@@ -19,7 +19,8 @@
 package ricassiocosta.me.valv5.viewmodel;
 
 import android.net.Uri;
-import android.util.Log;
+
+import ricassiocosta.me.valv5.security.SecureLog;
 
 import androidx.annotation.NonNull;
 import androidx.documentfile.provider.DocumentFile;
@@ -101,7 +102,7 @@ public class ExportViewModel extends ViewModel {
     }
 
     public void cancel() {
-        Log.e(TAG, "cancel: ");
+        SecureLog.d(TAG, "cancel");
         interrupted.set(true);
         setRunning(false);
         if (thread != null) {
@@ -110,7 +111,7 @@ public class ExportViewModel extends ViewModel {
     }
 
     public void start(FragmentActivity activity) {
-        Log.e(TAG, "start: ");
+        SecureLog.d(TAG, "start");
         if (thread != null) {
             thread.interrupt();
         }

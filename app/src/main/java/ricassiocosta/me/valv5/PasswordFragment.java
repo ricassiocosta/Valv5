@@ -5,11 +5,12 @@ import static androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRON
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
+
+import ricassiocosta.me.valv5.security.SecureLog;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -113,7 +114,7 @@ public class PasswordFragment extends Fragment {
             new Thread(() -> {
                 DirHash dirHash = settings.getDirHashForKey(temp);
                 if (dirHash == null) {
-                    Log.e(TAG, "init: dirHash null, save new");
+                    SecureLog.d(TAG, "init: dirHash null, save new");
                     byte[] salt = Encryption.generateSecureSalt(Encryption.SALT_LENGTH);
                     dirHash = Encryption.getDirHash(salt, temp);
                     settings.createDirHashEntry(salt, dirHash.hash());
@@ -139,13 +140,13 @@ public class PasswordFragment extends Fragment {
                 @Override
                 public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
                     super.onAuthenticationError(errorCode, errString);
-                    Log.e(TAG, "onAuthenticationError: " + errorCode + ", " + errString);
+                    SecureLog.d(TAG, "onAuthenticationError: " + errorCode);
                 }
 
                 @Override
                 public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
                     super.onAuthenticationSucceeded(result);
-                    Log.e(TAG, "onAuthenticationSucceeded: " + result);
+                    SecureLog.d(TAG, "onAuthenticationSucceeded");
                     BiometricPrompt.CryptoObject cryptoObject = result.getCryptoObject();
                     if (cryptoObject != null) {
                         try {
@@ -163,7 +164,7 @@ public class PasswordFragment extends Fragment {
                 @Override
                 public void onAuthenticationFailed() {
                     super.onAuthenticationFailed();
-                    Log.e(TAG, "onAuthenticationFailed: ");
+                    SecureLog.d(TAG, "onAuthenticationFailed");
                 }
             });
 
