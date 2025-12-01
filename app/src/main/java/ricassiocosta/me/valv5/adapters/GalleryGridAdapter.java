@@ -96,7 +96,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
     private static final int METADATA_CACHE_SIZE = 100;
     private final LruCache<Uri, Encryption.V5MetadataResult> metadataCache = new LruCache<>(METADATA_CACHE_SIZE);
 
-    private final boolean isRootDir, useDiskCache;
+    private final boolean isRootDir;
     private boolean showFileNames, selectMode;
     private int lastSelectedPos;
     private String nestedPath;
@@ -131,8 +131,6 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
         this.selectedFiles = new UniqueLinkedList<>();
         this.isRootDir = isRootDir;
         password = Password.getInstance();
-        useDiskCache = Settings.getInstance(context).useDiskCache();
-        Log.e(TAG, "GalleryGridAdapter: useDiskCache " + useDiskCache);
     }
 
     public void setNestedPath(String nestedPath) {
@@ -220,7 +218,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             } else if (firstFile.getThumbUri() != null) {
                 Glide.with(context)
                         .load(firstFile.getThumbUri())
-                        .apply(GlideStuff.getGridThumbnailOptions(useDiskCache))
+                        .apply(GlideStuff.getGridThumbnailOptions())
                         .into(holder.binding.imageView);
             } else if (firstFile.mayBeV5CompositeFile()) {
                 loadCompositeThumb(context, firstFile, holder);
@@ -244,7 +242,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             } else if (galleryFile.getThumbUri() != null) {
                 Glide.with(context)
                         .load(galleryFile.getThumbUri())
-                        .apply(GlideStuff.getGridThumbnailOptions(useDiskCache))
+                        .apply(GlideStuff.getGridThumbnailOptions())
                         .listener(new RequestListener<>() {
                             @Override
                             public boolean onLoadFailed(@Nullable GlideException e, Object model, @NonNull Target<Drawable> target, boolean isFirstResource) {
@@ -644,7 +642,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             galleryFile.setThumbUri(metadata.thumbUri);
             Glide.with(context)
                     .load(metadata.thumbUri)
-                    .apply(GlideStuff.getGridThumbnailOptions(useDiskCache))
+                    .apply(GlideStuff.getGridThumbnailOptions())
                     .into(holder.binding.imageView);
         } else {
             Glide.with(context)

@@ -47,7 +47,6 @@ public class Settings {
     private static final String PREF_VAULT_KEYS = "keys";
     private static final String PREF_SHOW_FILENAMES_IN_GRID = "p.gallery.fn";
     public static final String PREF_ENCRYPTION_ITERATION_COUNT = "encryption_iteration_count";
-    public static final String PREF_ENCRYPTION_USE_DISK_CACHE = "encryption_use_disk_cache";
     public static final String PREF_ENCRYPTION_DELETE_BY_DEFAULT = "encryption_delete_by_default";
     public static final String PREF_ENCRYPTION_USE_ARGON2 = "encryption_use_argon2";
 
@@ -104,14 +103,6 @@ public class Settings {
      */
     public void setUseArgon2(boolean useArgon2) {
         getSharedPrefsEditor().putBoolean(PREF_ENCRYPTION_USE_ARGON2, useArgon2).apply();
-    }
-
-    public boolean useDiskCache() {
-        return getSharedPrefs().getBoolean(PREF_ENCRYPTION_USE_DISK_CACHE, false);
-    }
-
-    public void setUseDiskCache(boolean useDiskCache) {
-        getSharedPrefsEditor().putBoolean(PREF_ENCRYPTION_USE_DISK_CACHE, useDiskCache).apply();
     }
 
     public boolean isDeleteByDefault() {

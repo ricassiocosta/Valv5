@@ -28,21 +28,25 @@ import ricassiocosta.me.valv5.MainActivity;
 
 public class GlideStuff {
 
+    /**
+     * Request options for viewing images - no disk cache for security.
+     */
     @NonNull
-    public static RequestOptions getRequestOptions(boolean useDiskCache) {
+    public static RequestOptions getRequestOptions() {
         return new RequestOptions()
-                .diskCacheStrategy(useDiskCache ? DiskCacheStrategy.AUTOMATIC : DiskCacheStrategy.NONE)
+                .diskCacheStrategy(DiskCacheStrategy.NONE)
                 .signature(new ObjectKey(MainActivity.GLIDE_KEY));
     }
 
     /**
-     * Request options for grid thumbnails - skips memory cache to reduce memory usage.
-     * Thumbnails will be reloaded when scrolling back, but this prevents OOM with large galleries.
+     * Request options for grid thumbnails - skips both disk and memory cache.
+     * Thumbnails will be reloaded when scrolling back, but this prevents OOM with large galleries
+     * and ensures no decrypted data is written to disk.
      */
     @NonNull
-    public static RequestOptions getGridThumbnailOptions(boolean useDiskCache) {
+    public static RequestOptions getGridThumbnailOptions() {
         return new RequestOptions()
-                .diskCacheStrategy(useDiskCache ? DiskCacheStrategy.AUTOMATIC : DiskCacheStrategy.NONE)
+                .diskCacheStrategy(DiskCacheStrategy.NONE)
                 .signature(new ObjectKey(MainActivity.GLIDE_KEY))
                 .skipMemoryCache(true);
     }

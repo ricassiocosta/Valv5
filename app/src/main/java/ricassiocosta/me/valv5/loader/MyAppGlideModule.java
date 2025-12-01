@@ -19,7 +19,6 @@
 package ricassiocosta.me.valv5.loader;
 
 import android.content.Context;
-import android.net.Uri;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -28,8 +27,7 @@ import com.bumptech.glide.Glide;
 import com.bumptech.glide.GlideBuilder;
 import com.bumptech.glide.Registry;
 import com.bumptech.glide.annotation.GlideModule;
-import com.bumptech.glide.load.engine.cache.LruResourceCache;
-import com.bumptech.glide.load.engine.cache.MemorySizeCalculator;
+import com.bumptech.glide.load.engine.cache.InternalCacheDiskCacheFactory;
 import com.bumptech.glide.module.AppGlideModule;
 
 import java.io.InputStream;
@@ -47,15 +45,8 @@ public class MyAppGlideModule extends AppGlideModule {
     @Override
     public void applyOptions(@NonNull Context context, @NonNull GlideBuilder builder) {
         builder.setLogLevel(Log.ERROR);
-        
-        // Limit memory cache to ~20MB for thumbnails
-        // This ensures only visible + nearby thumbnails are kept in memory
-        MemorySizeCalculator calculator = new MemorySizeCalculator.Builder(context)
-                .setMemoryCacheScreens(1.5f) // Keep ~1.5 screens worth of images
-                .build();
-        int memoryCacheSize = Math.min(calculator.getMemoryCacheSize(), 20 * 1024 * 1024); // Max 20MB
-        builder.setMemoryCache(new LruResourceCache(memoryCacheSize));
-        
+        // Disable disk cache completely for security - no decrypted data should be written to disk
+        builder.setDiskCache(new InternalCacheDiskCacheFactory(context, 0));
         super.applyOptions(context, builder);
     }
 }

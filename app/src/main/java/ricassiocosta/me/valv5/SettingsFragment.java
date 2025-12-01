@@ -60,7 +60,6 @@ public class SettingsFragment extends PreferenceFragmentCompat implements MenuPr
         Preference iterationCount = findPreference(Settings.PREF_ENCRYPTION_ITERATION_COUNT);
         Preference editFolders = findPreference(Settings.PREF_APP_EDIT_FOLDERS);
         SwitchPreferenceCompat biometrics = findPreference(Settings.PREF_APP_BIOMETRICS);
-        SwitchPreferenceCompat useDiskCache = findPreference(Settings.PREF_ENCRYPTION_USE_DISK_CACHE);
         SwitchPreferenceCompat secure = findPreference(Settings.PREF_APP_SECURE);
         SwitchPreferenceCompat deleteByDefault = findPreference(Settings.PREF_ENCRYPTION_DELETE_BY_DEFAULT);
 
@@ -140,11 +139,6 @@ public class SettingsFragment extends PreferenceFragmentCompat implements MenuPr
                 requireActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
             }
             settings.setSecureFlag((boolean) newValue);
-            return true;
-        });
-
-        useDiskCache.setOnPreferenceChangeListener((preference, newValue) -> {
-            settings.setUseDiskCache((boolean) newValue);
             return true;
         });
 
