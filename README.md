@@ -9,9 +9,21 @@ An encrypted gallery vault for Android devices. Modified version of [Valv-Androi
 - Supports multiple vaults by the use of different passwords
 - Day/night modes
 - Add notes/text to files
+- **No disk caching** - all decrypted data remains in memory only
 
 ## Encryption
-Files are encrypted using ChaCha20 and keys are derived using PBKDF2 with HMAC-SHA512. Read the details in [ENCRYPTION.md](ENCRYPTION.md).
+Files are encrypted using modern authenticated encryption:
+- **Key Derivation**: Argon2id (memory-hard, GPU/ASIC resistant) or PBKDF2 with HMAC-SHA512 (legacy)
+- **Small Files (≤50 MB)**: ChaCha20-Poly1305 AEAD
+- **Large Files (>50 MB)**: libsodium SecretStream (XChaCha20-Poly1305) for memory-efficient streaming
+
+Read the full details in [ENCRYPTION.md](ENCRYPTION.md).
+
+## Security Features
+- **Authenticated encryption**: All data is protected against tampering
+- **Secure memory management**: Keys and decrypted content are securely wiped from memory
+- **Root detection**: App blocks usage on rooted/compromised devices
+- **No metadata leakage**: Files use random 32-character names with no extensions
 
 ## Requirements
 - Android 9 or newer
