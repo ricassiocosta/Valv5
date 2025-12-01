@@ -21,20 +21,26 @@ package ricassiocosta.me.valv5.views;
 import android.content.Context;
 import android.util.AttributeSet;
 
-import androidx.appcompat.widget.AppCompatImageView;
-
-public class GridImageView extends AppCompatImageView {
+/**
+ * A grid-optimized ImageView that maintains a 1:1.2 aspect ratio.
+ * Extends SecureImageView for secure bitmap handling.
+ */
+public class GridImageView extends SecureImageView {
 
     public GridImageView(Context context) {
         super(context);
+        // Disable clear on detach for RecyclerView recycling
+        setClearOnDetach(false);
     }
 
     public GridImageView(Context context, AttributeSet attrs) {
         super(context, attrs);
+        setClearOnDetach(false);
     }
 
     public GridImageView(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
+        setClearOnDetach(false);
     }
 
     @Override

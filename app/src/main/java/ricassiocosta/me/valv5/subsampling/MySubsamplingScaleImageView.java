@@ -391,6 +391,9 @@ public class MySubsamplingScaleImageView extends View {
         }
 
         quickScaleThreshold = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 20, context.getResources().getDisplayMetrics());
+
+        // Security: Use hardware layer to help prevent memory dumps of pixels
+        setLayerType(LAYER_TYPE_HARDWARE, null);
     }
 
     public MySubsamplingScaleImageView(Context context) {
@@ -552,6 +555,10 @@ public class MySubsamplingScaleImageView extends View {
                 decoderLock.writeLock().unlock();
             }
             if (bitmap != null && !bitmapIsCached) {
+                // Secure wipe: overwrite pixel data before recycling
+                if (!bitmap.isRecycled() && bitmap.isMutable()) {
+                    bitmap.eraseColor(0);
+                }
                 bitmap.recycle();
             }
             if (bitmap != null && bitmapIsCached && onImageEventListener != null) {
@@ -573,6 +580,10 @@ public class MySubsamplingScaleImageView extends View {
                 for (MySubsamplingScaleImageView.Tile tile : tileMapEntry.getValue()) {
                     tile.visible = false;
                     if (tile.bitmap != null) {
+                        // Secure wipe: overwrite tile pixel data before recycling
+                        if (!tile.bitmap.isRecycled() && tile.bitmap.isMutable()) {
+                            tile.bitmap.eraseColor(0);
+                        }
                         tile.bitmap.recycle();
                         tile.bitmap = null;
                     }
@@ -1355,6 +1366,10 @@ public class MySubsamplingScaleImageView extends View {
                 if (tile.sampleSize < sampleSize || (tile.sampleSize > sampleSize && tile.sampleSize != fullImageSampleSize)) {
                     tile.visible = false;
                     if (tile.bitmap != null) {
+                        // Secure wipe: overwrite tile pixel data before recycling
+                        if (!tile.bitmap.isRecycled() && tile.bitmap.isMutable()) {
+                            tile.bitmap.eraseColor(0);
+                        }
                         tile.bitmap.recycle();
                         tile.bitmap = null;
                     }
@@ -1369,6 +1384,10 @@ public class MySubsamplingScaleImageView extends View {
                     } else if (tile.sampleSize != fullImageSampleSize) {
                         tile.visible = false;
                         if (tile.bitmap != null) {
+                            // Secure wipe: overwrite tile pixel data before recycling
+                            if (!tile.bitmap.isRecycled() && tile.bitmap.isMutable()) {
+                                tile.bitmap.eraseColor(0);
+                            }
                             tile.bitmap.recycle();
                             tile.bitmap = null;
                         }
@@ -2063,6 +2082,15 @@ public class MySubsamplingScaleImageView extends View {
         debugTextPaint = null;
         debugLinePaint = null;
         tileBgPaint = null;
+    }
+
+    /**
+     * Security: Ensure bitmap data is securely cleared when view is detached.
+     */
+    @Override
+    protected void onDetachedFromWindow() {
+        recycle();
+        super.onDetachedFromWindow();
     }
 
     /**
