@@ -22,8 +22,10 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.io.ByteArrayInputStream;
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -43,8 +45,9 @@ import ricassiocosta.me.valv5.security.SecureLog;
  * 3. Call hasThumbnailSection() to check if thumbnail exists
  * 4. Call getThumbnailInputStream() to lazily load thumbnail
  * 5. Call getNoteSection() to get note text
+ * 6. Call close() when done to securely wipe cached data
  */
-public class CompositeStreams {
+public class CompositeStreams implements Closeable {
     private static final String TAG = "CompositeStreams";
 
     private final InputStream encryptedIn;
@@ -283,6 +286,34 @@ public class CompositeStreams {
         }
 
         return new String(cachedNote, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Close this stream and securely wipe all cached data.
+     * This should be called when finished to prevent sensitive data from remaining in memory.
+     */
+    @Override
+    public void close() throws IOException {
+        // Securely wipe cached file content
+        if (cachedFileContent != null) {
+            Arrays.fill(cachedFileContent, (byte) 0);
+            cachedFileContent = null;
+        }
+        
+        // Securely wipe cached thumbnail
+        if (cachedThumbnail != null) {
+            Arrays.fill(cachedThumbnail, (byte) 0);
+            cachedThumbnail = null;
+        }
+        
+        // Securely wipe cached note
+        if (cachedNote != null) {
+            Arrays.fill(cachedNote, (byte) 0);
+            cachedNote = null;
+        }
+        
+        // Close the underlying encrypted input stream
+        encryptedIn.close();
     }
 
 

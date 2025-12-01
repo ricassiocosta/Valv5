@@ -25,6 +25,7 @@ import java.io.BufferedInputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
 
 import ricassiocosta.me.valv5.security.SecureLog;
 
@@ -153,13 +154,18 @@ public class SectionReader {
         byte[] buffer = new byte[8192];
         long remaining = size;
         
-        while (remaining > 0) {
-            int toRead = (int) Math.min(buffer.length, remaining);
-            int bytesRead = encryptedIn.read(buffer, 0, toRead);
-            if (bytesRead <= 0) {
-                throw new EOFException("Could not skip " + size + " bytes, only skipped " + (size - remaining));
+        try {
+            while (remaining > 0) {
+                int toRead = (int) Math.min(buffer.length, remaining);
+                int bytesRead = encryptedIn.read(buffer, 0, toRead);
+                if (bytesRead <= 0) {
+                    throw new EOFException("Could not skip " + size + " bytes, only skipped " + (size - remaining));
+                }
+                remaining -= bytesRead;
             }
-            remaining -= bytesRead;
+        } finally {
+            // Security: Wipe buffer containing decrypted data
+            Arrays.fill(buffer, (byte) 0);
         }
     }
 

@@ -519,8 +519,13 @@ public class Encryption {
             java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
             int nRead;
             byte[] data = new byte[16384];
-            while ((nRead = is.read(data, 0, data.length)) != -1) {
-                buffer.write(data, 0, nRead);
+            try {
+                while ((nRead = is.read(data, 0, data.length)) != -1) {
+                    buffer.write(data, 0, nRead);
+                }
+            } finally {
+                // Security: Wipe temporary buffer
+                java.util.Arrays.fill(data, (byte) 0);
             }
             return buffer.toByteArray();
         }
@@ -603,16 +608,21 @@ public class Encryption {
         int read;
         byte[] buffer = new byte[2048];
         long progress = 0;
-        while ((read = streams.inputStream.read(buffer)) != -1) {
-            if (interrupted.get()) {
-                streams.close();
-                return;
+        try {
+            while ((read = streams.inputStream.read(buffer)) != -1) {
+                if (interrupted.get()) {
+                    streams.close();
+                    return;
+                }
+                streams.outputStream.write(buffer, 0, read);
+                if (onProgress != null) {
+                    progress += read;
+                    onProgress.onProgress(progress);
+                }
             }
-            streams.outputStream.write(buffer, 0, read);
-            if (onProgress != null) {
-                progress += read;
-                onProgress.onProgress(progress);
-            }
+        } finally {
+            // Security: Wipe buffer containing plaintext data
+            java.util.Arrays.fill(buffer, (byte) 0);
         }
 
         streams.close();
@@ -687,8 +697,13 @@ public class Encryption {
                 if (tmpIn != null && finalOut != null) {
                     byte[] buffer = new byte[8192];
                     int bytesRead;
-                    while ((bytesRead = tmpIn.read(buffer)) != -1) {
-                        finalOut.write(buffer, 0, bytesRead);
+                    try {
+                        while ((bytesRead = tmpIn.read(buffer)) != -1) {
+                            finalOut.write(buffer, 0, bytesRead);
+                        }
+                    } finally {
+                        // Security: Wipe buffer (encrypted data, but still good practice)
+                        java.util.Arrays.fill(buffer, (byte) 0);
                     }
                     finalOut.flush();
                 }
@@ -987,8 +1002,13 @@ public class Encryption {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         int nRead;
         byte[] data = new byte[16384];
-        while ((nRead = is.read(data, 0, data.length)) != -1) {
-            buffer.write(data, 0, nRead);
+        try {
+            while ((nRead = is.read(data, 0, data.length)) != -1) {
+                buffer.write(data, 0, nRead);
+            }
+        } finally {
+            // Security: Wipe temporary buffer
+            java.util.Arrays.fill(data, (byte) 0);
         }
         return buffer.toByteArray();
     }

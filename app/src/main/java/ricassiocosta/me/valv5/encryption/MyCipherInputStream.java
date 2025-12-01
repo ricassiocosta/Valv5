@@ -20,6 +20,7 @@ package ricassiocosta.me.valv5.encryption;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
 
 import javax.crypto.AEADBadTagException;
 import javax.crypto.BadPaddingException;
@@ -61,21 +62,27 @@ public class MyCipherInputStream extends CipherInputStream {
         ostart = 0;
         int expectedOutputSize = cipher.getOutputSize(ibuffer.length);
         if (obuffer == null || expectedOutputSize > obuffer.length) {
+            // Wipe old buffer before creating new one
+            if (obuffer != null) {
+                Arrays.fill(obuffer, (byte) 0);
+            }
             obuffer = new byte[expectedOutputSize];
         }
         int readin = input.read(ibuffer);
         if (readin == -1) {
             done = true;
+            // Security: Wipe input buffer after last read
+            Arrays.fill(ibuffer, (byte) 0);
             try {
                 // doFinal resets the cipher and it is the final call that is made. If there isn't
                 // any more byte available, it returns 0. In case of any exception is raised,
                 // obuffer will get reset and therefore, it is equivalent to no bytes returned.
                 ofinish = cipher.doFinal(obuffer, 0);
             } catch (IllegalBlockSizeException | BadPaddingException e) {
-                obuffer = null;
+                secureWipeBuffers();
                 throw new IOException(e);
             } catch (ShortBufferException e) {
-                obuffer = null;
+                secureWipeBuffers();
                 throw new IllegalStateException("ShortBufferException is not expected", e);
             }
         } else {
@@ -83,11 +90,11 @@ public class MyCipherInputStream extends CipherInputStream {
             try {
                 ofinish = cipher.update(ibuffer, 0, readin, obuffer, 0);
             } catch (IllegalStateException e) {
-                obuffer = null;
+                secureWipeBuffers();
                 throw e;
             } catch (ShortBufferException e) {
                 // Should not reset the value of ofinish as the cipher is still not invalidated.
-                obuffer = null;
+                secureWipeBuffers();
                 throw new IllegalStateException("ShortBufferException is not expected", e);
             }
         }
@@ -166,8 +173,27 @@ public class MyCipherInputStream extends CipherInputStream {
                 }
             }
         }
+        
+        // Security: Securely wipe all buffers containing decrypted data
+        secureWipeBuffers();
+        
         ostart = 0;
         ofinish = 0;
+    }
+
+    /**
+     * Securely wipes all internal buffers to prevent data leakage.
+     * Called on close() and when buffers are reset due to errors.
+     */
+    private void secureWipeBuffers() {
+        // Wipe input buffer (contains encrypted data)
+        Arrays.fill(ibuffer, (byte) 0);
+        
+        // Wipe output buffer (contains decrypted data - most sensitive)
+        if (obuffer != null) {
+            Arrays.fill(obuffer, (byte) 0);
+            obuffer = null;
+        }
     }
 
     @Override
