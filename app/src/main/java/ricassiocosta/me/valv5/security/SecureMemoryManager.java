@@ -40,9 +40,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import ricassiocosta.me.valv5.MainActivity;
 import ricassiocosta.me.valv5.utils.FileStuff;
-import ricassiocosta.me.valv5.security.SecureLog;
 
 /**
  * Centralized manager for secure memory operations.
@@ -417,8 +415,8 @@ public class SecureMemoryManager {
             FileStuff.deleteCache(context);
         }
         
-        // Update Glide key to invalidate cached items
-        MainActivity.GLIDE_KEY = System.currentTimeMillis();
+        // Destroy ephemeral session key to invalidate all cached items
+        EphemeralSessionKey.getInstance().destroy();
         
         // Force garbage collection
         System.gc();

@@ -124,7 +124,8 @@ public class PasswordFragment extends Fragment {
                 requireActivity().runOnUiThread(() -> {
                     passwordViewModel.setDirHash(finalDirHash);
                     binding.eTPassword.setText(null);
-                    MainActivity.GLIDE_KEY = System.currentTimeMillis();
+                    // Regenerate ephemeral session key on successful login
+                    ricassiocosta.me.valv5.security.EphemeralSessionKey.getInstance().regenerate();
                     savedStateHandle.set(LOGIN_SUCCESSFUL, true);
                     NavHostFragment.findNavController(this).popBackStack();
                 });

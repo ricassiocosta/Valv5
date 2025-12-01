@@ -24,7 +24,7 @@ import com.bumptech.glide.Glide;
 
 import java.util.Arrays;
 
-import ricassiocosta.me.valv5.MainActivity;
+import ricassiocosta.me.valv5.security.EphemeralSessionKey;
 import ricassiocosta.me.valv5.security.SecureMemoryManager;
 import ricassiocosta.me.valv5.utils.FileStuff;
 import ricassiocosta.me.valv5.utils.Settings;
@@ -86,6 +86,9 @@ public class Password {
         }
         p.clear();
         
+        // Destroy ephemeral session key - invalidates all cached data
+        EphemeralSessionKey.getInstance().destroy();
+        
         // Perform full memory cleanup including all registered sensitive buffers
         SecureMemoryManager.getInstance().performFullCleanup(context);
         
@@ -94,6 +97,5 @@ public class Password {
             FileStuff.deleteCache(context);
             Glide.get(context).clearMemory();
         }
-        MainActivity.GLIDE_KEY = System.currentTimeMillis();
     }
 }

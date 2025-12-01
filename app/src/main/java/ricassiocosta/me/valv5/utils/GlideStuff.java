@@ -24,30 +24,32 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.request.RequestOptions;
 import com.bumptech.glide.signature.ObjectKey;
 
-import ricassiocosta.me.valv5.MainActivity;
+import ricassiocosta.me.valv5.security.EphemeralSessionKey;
 
 public class GlideStuff {
 
     /**
      * Request options for viewing images - no disk cache for security.
+     * Uses ephemeral session key for cache signature to ensure cache isolation between sessions.
      */
     @NonNull
     public static RequestOptions getRequestOptions() {
         return new RequestOptions()
                 .diskCacheStrategy(DiskCacheStrategy.NONE)
-                .signature(new ObjectKey(MainActivity.GLIDE_KEY));
+                .signature(new ObjectKey(EphemeralSessionKey.getInstance().getSessionId()));
     }
 
     /**
      * Request options for grid thumbnails - skips both disk and memory cache.
      * Thumbnails will be reloaded when scrolling back, but this prevents OOM with large galleries
      * and ensures no decrypted data is written to disk.
+     * Uses ephemeral session key for additional security.
      */
     @NonNull
     public static RequestOptions getGridThumbnailOptions() {
         return new RequestOptions()
                 .diskCacheStrategy(DiskCacheStrategy.NONE)
-                .signature(new ObjectKey(MainActivity.GLIDE_KEY))
+                .signature(new ObjectKey(EphemeralSessionKey.getInstance().getSessionId()))
                 .skipMemoryCache(true);
     }
 

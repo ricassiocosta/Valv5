@@ -39,7 +39,6 @@ import ricassiocosta.me.valv5.viewmodel.ShareViewModel;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
-    public static long GLIDE_KEY = System.currentTimeMillis();
 
     private AppBarConfiguration appBarConfiguration;
     private ActivityMainBinding binding;
