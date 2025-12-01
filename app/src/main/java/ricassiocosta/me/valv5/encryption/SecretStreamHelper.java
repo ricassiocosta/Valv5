@@ -136,7 +136,9 @@ public class SecretStreamHelper {
             return bytesWritten;
         }
         
-        while (bytesRead > 0) {
+        // Process chunks using do-while since bytesRead > 0 is guaranteed here
+        // (bytesRead <= 0 case was handled above with early return)
+        do {
             // Read next chunk to determine if current is final
             byte[] nextPlain = new byte[chunkSize];
             int nextRead = readFully(plainInput, nextPlain, chunkSize);
@@ -172,7 +174,7 @@ public class SecretStreamHelper {
             plainChunk = nextPlain;
             nextPlain = temp;
             bytesRead = nextRead;
-        }
+        } while (bytesRead > 0);
         
         return bytesWritten;
     }

@@ -114,10 +114,11 @@ public final class SecurityUtils {
         Process process = null;
         try {
             process = Runtime.getRuntime().exec(new String[]{"which", "su"});
-            BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream()));
-            String line = reader.readLine();
-            return line != null && !line.isEmpty();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line = reader.readLine();
+                return line != null && !line.isEmpty();
+            }
         } catch (Exception e) {
             return false;
         } finally {
@@ -140,18 +141,24 @@ public final class SecurityUtils {
         }
 
         // Check for Magisk Manager or renamed packages
+        Process process = null;
         try {
-            Process process = Runtime.getRuntime().exec("pm list packages");
-            BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream()));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                // Check for Magisk Manager (may be renamed)
-                if (line.contains("com.topjohnwu.magisk")) {
-                    return true;
+            process = Runtime.getRuntime().exec("pm list packages");
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    // Check for Magisk Manager (may be renamed)
+                    if (line.contains("com.topjohnwu.magisk")) {
+                        return true;
+                    }
                 }
             }
         } catch (Exception ignored) {
+        } finally {
+            if (process != null) {
+                process.destroy();
+            }
         }
 
         return false;
