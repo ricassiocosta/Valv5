@@ -267,10 +267,12 @@ public class MainActivity extends AppCompatActivity {
             // Lock the vault (same as screen off lock)
             Password.lock(this, false);
             
-            Settings settings = Settings.getInstance(this);
-            
-            // Navigate to password screen
-            navController.navigate(R.id.password);
+            // Restart the activity to ensure a completely clean state
+            // This avoids the ghost session issue where old navigation state persists
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            finish();
         }
     }
 
