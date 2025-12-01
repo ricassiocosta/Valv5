@@ -1,3 +1,0 @@
-* Kryptera textfiler
-* Ordna filer efter datum och storlek
-* Filtrera filer efter filtyp

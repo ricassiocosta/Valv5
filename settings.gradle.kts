@@ -19,6 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Valv"
+rootProject.name = "Valv5"
 include(":app")
  

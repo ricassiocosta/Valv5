@@ -7,7 +7,7 @@
 
     <fragment
         android:id="@+id/directory"
-        android:name="se.arctosoft.vault.DirectoryFragment"
+        android:name="ricassiocosta.me.valv5.DirectoryFragment"
         android:label="@string/gallery_title"
         tools:layout="@layout/fragment_directory">
         <action
@@ -32,7 +32,7 @@
 
     <fragment
         android:id="@+id/directory_all"
-        android:name="se.arctosoft.vault.DirectoryAllFragment"
+        android:name="ricassiocosta.me.valv5.DirectoryAllFragment"
         android:label="@string/gallery_all"
         tools:layout="@layout/fragment_directory">
         <action
@@ -42,13 +42,13 @@
 
     <fragment
         android:id="@+id/password"
-        android:name="se.arctosoft.vault.PasswordFragment"
+        android:name="ricassiocosta.me.valv5.PasswordFragment"
         android:label="@string/launcher_title"
         tools:layout="@layout/fragment_password" />
 
     <fragment
         android:id="@+id/settings"
-        android:name="se.arctosoft.vault.SettingsFragment"
+        android:name="ricassiocosta.me.valv5.SettingsFragment"
         android:label="@string/settings" />
 
 </navigation>

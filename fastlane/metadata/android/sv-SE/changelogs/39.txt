@@ -1,3 +1,0 @@
-* Biometri har lagts till. Du kan nu låsa upp ett valv med biometri (fingeravtryck, ansikte, etc.)
-* Varje lösenord/valv har nu sin egen uppsättning mappar. T.ex. om du använder ett nytt lösenord visas inte längre mappar som lagts till med ett annat lösenord.
-Obs: detta innebär att du måste lägga till dina mappar igen eftersom de inte överförs från den tidigare versionen.

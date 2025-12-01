@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "se.arctosoft.vault"
+    namespace = "ricassiocosta.me.valv5"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "se.arctosoft.vault"
+        applicationId = "ricassiocosta.me.valv5"
         minSdk = 28
         targetSdk = 36
         versionCode = 39
@@ -83,6 +83,14 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.preferences)
     annotationProcessor(libs.glide.annotation)
+
+    // Argon2id for password hashing (Signal's implementation)
+    implementation(libs.argon2)
+
+    // libsodium for streaming AEAD encryption (XChaCha20-Poly1305 secretstream)
+    // JNA 5.5.0 is the version that lazysodium-android 5.1.0 was built with
+    implementation("com.goterl:lazysodium-android:5.1.0@aar")
+    implementation("net.java.dev.jna:jna:5.5.0@aar")
 
     implementation(libs.glide)
     implementation(libs.about.libraries)

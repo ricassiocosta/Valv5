@@ -1,4 +1,4 @@
-package se.arctosoft.vault;
+package ricassiocosta.me.valv5;
 
 import org.junit.Test;
 

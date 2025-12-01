@@ -1,5 +1,8 @@
 <resources>
-    <string name="app_name">Valv</string>
+    <string name="app_name">Valv5</string>
+    <string name="exit">Exit</string>
+    <string name="security_warning_title">Security Warning</string>
+    <string name="security_warning_rooted">This device appears to be rooted or tampered with. For security reasons, the app cannot run on compromised devices.</string>
     <string name="gallery_encrypt_file">Encrypt file</string>
     <string name="gallery_decrypt_file">Decrypt file</string>
     <string name="title_activity_main">MainActivity</string>
@@ -40,9 +43,6 @@
     <string name="settings_return_to_last_app_summary_off">Normal auto-lock behavior when the screen turns off.</string>
     <string name="settings_preferred_app_title">Choose preferred app</string>
     <string name="settings_preferred_app_summary">Select which app to open after auto-lock</string>
-    <string name="settings_use_disk_cache_title">Use disk cache</string>
-    <string name="settings_use_disk_cache_summary_on">Decrypts media files you view to the app\'s private cache directory for faster loading. The cache directory is deleted when locking/restarting the app.</string>
-    <string name="settings_use_disk_cache_summary_off">Disk cache disabled. All media files are stored in-memory only. More secure but takes longer to load media and thumbnails.</string>
     <string name="settings_delete_by_default_title">Delete original files by default</string>
     <string name="settings_delete_by_default_summary_on">\"Delete the original files after importing\" is checked by default.</string>
     <string name="settings_delete_by_default_summary_off">\"Delete the original files after importing\" is unchecked by default.</string>
@@ -235,7 +235,7 @@
     <string name="dialog_delete_file_title">Delete?</string>
     <string name="dialog_delete_file_message">Delete this file permanently?</string>
     <string name="dialog_about_title">About</string>
-    <string name="dialog_about_message">Valv gallery vault\n\nVersion %1$s-%2$s (%3$d)\n\nFiles are encrypted using ChaCha20 and keys are derived using PBKDF2 with HMAC-SHA512.\n\n\u00A9 2024 Arctosoft AB</string>
+    <string name="dialog_about_message">Valv5 gallery vault\n\nVersion %1$s-%2$s (%3$d)\n\nFiles are encrypted using ChaCha20 and keys are derived using PBKDF2 with HMAC-SHA512.\n\n\u00A9 2025 ricassiocosta</string>
 
     <string name="biometrics_not_enabled">You need to enable biometrics on your device before using this feature!</string>
     <string name="biometrics_prompt_title">Enable biometrics</string>

@@ -1,3 +1,0 @@
-* Copy and move selected files in the grid
-* Fixed a bug where a newly added folder was not displayed
-* Fixed a crash when selecting files in the the All folder and exporting

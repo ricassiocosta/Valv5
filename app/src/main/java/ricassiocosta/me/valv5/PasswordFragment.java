@@ -1,0 +1,229 @@
+package ricassiocosta.me.valv5;
+
+import static androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG;
+
+import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
+
+import ricassiocosta.me.valv5.security.SecureLog;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.biometric.BiometricManager;
+import androidx.biometric.BiometricPrompt;
+import androidx.core.content.ContextCompat;
+import androidx.fragment.app.Fragment;
+import androidx.lifecycle.SavedStateHandle;
+import androidx.lifecycle.ViewModelProvider;
+import androidx.navigation.Navigation;
+import androidx.navigation.fragment.NavHostFragment;
+
+import java.io.IOException;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.security.UnrecoverableKeyException;
+import java.security.cert.CertificateException;
+import java.util.concurrent.Executor;
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.IvParameterSpec;
+
+import ricassiocosta.me.valv5.data.DirHash;
+import ricassiocosta.me.valv5.databinding.FragmentPasswordBinding;
+import ricassiocosta.me.valv5.encryption.Encryption;
+import ricassiocosta.me.valv5.security.SecurityUtils;
+import ricassiocosta.me.valv5.utils.Dialogs;
+import ricassiocosta.me.valv5.utils.Settings;
+import ricassiocosta.me.valv5.utils.Toaster;
+import ricassiocosta.me.valv5.viewmodel.PasswordViewModel;
+
+public class PasswordFragment extends Fragment {
+    private static final String TAG = "PasswordFragment";
+    public static String LOGIN_SUCCESSFUL = "LOGIN_SUCCESSFUL";
+
+    private PasswordViewModel passwordViewModel;
+    private SavedStateHandle savedStateHandle;
+    private FragmentPasswordBinding binding;
+
+    private BiometricPrompt biometricPrompt;
+    private BiometricPrompt.PromptInfo promptInfo;
+
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+        binding = FragmentPasswordBinding.inflate(inflater, container, false);
+        return binding.getRoot();
+    }
+
+    @Override
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+        passwordViewModel = new ViewModelProvider(requireActivity()).get(PasswordViewModel.class);
+
+        savedStateHandle = Navigation.findNavController(view)
+                .getPreviousBackStackEntry()
+                .getSavedStateHandle();
+        savedStateHandle.set(LOGIN_SUCCESSFUL, false);
+
+        Settings settings = Settings.getInstance(requireContext());
+
+        // Perform security checks on startup
+        performSecurityChecks(settings);
+
+        binding.eTPassword.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                int length = s.length();
+                binding.btnUnlock.setEnabled(length > 0);
+            }
+        });
+        binding.eTPassword.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_SEND) {
+                binding.btnUnlock.performClick();
+                return true;
+            }
+            return false;
+        });
+        binding.btnUnlock.setOnClickListener(v -> {
+            binding.btnUnlock.setEnabled(false);
+            binding.eTPassword.setEnabled(false);
+            binding.biometrics.setEnabled(false);
+            binding.loading.setVisibility(View.VISIBLE);
+            char[] temp = new char[binding.eTPassword.length()];
+            binding.eTPassword.getText().getChars(0, binding.eTPassword.length(), temp, 0);
+            passwordViewModel.setPassword(temp);
+
+            new Thread(() -> {
+                DirHash dirHash = settings.getDirHashForKey(temp);
+                if (dirHash == null) {
+                    SecureLog.d(TAG, "init: dirHash null, save new");
+                    byte[] salt = Encryption.generateSecureSalt(Encryption.SALT_LENGTH);
+                    dirHash = Encryption.getDirHash(salt, temp);
+                    settings.createDirHashEntry(salt, dirHash.hash());
+                }
+
+                DirHash finalDirHash = dirHash;
+                requireActivity().runOnUiThread(() -> {
+                    passwordViewModel.setDirHash(finalDirHash);
+                    binding.eTPassword.setText(null);
+                    // Regenerate ephemeral session key on successful login
+                    ricassiocosta.me.valv5.security.EphemeralSessionKey.getInstance().regenerate();
+                    savedStateHandle.set(LOGIN_SUCCESSFUL, true);
+                    NavHostFragment.findNavController(this).popBackStack();
+                });
+            }).start();
+
+        });
+        binding.btnHelp.setOnClickListener(v -> Dialogs.showTextDialog(requireContext(), null, getString(R.string.launcher_help_message)));
+
+        BiometricManager biometricManager = BiometricManager.from(requireContext());
+        if (settings.isBiometricsEnabled() && biometricManager.canAuthenticate(BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS) {
+            Executor executor = ContextCompat.getMainExecutor(requireContext());
+            biometricPrompt = new BiometricPrompt(requireActivity(), executor, new BiometricPrompt.AuthenticationCallback() {
+                @Override
+                public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
+                    super.onAuthenticationError(errorCode, errString);
+                    SecureLog.d(TAG, "onAuthenticationError: " + errorCode);
+                }
+
+                @Override
+                public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
+                    super.onAuthenticationSucceeded(result);
+                    SecureLog.d(TAG, "onAuthenticationSucceeded");
+                    BiometricPrompt.CryptoObject cryptoObject = result.getCryptoObject();
+                    if (cryptoObject != null) {
+                        try {
+                            byte[] decrypted = cryptoObject.getCipher().doFinal(settings.getBiometricsData());
+                            char[] chars = Encryption.toChars(decrypted);
+                            binding.eTPassword.setText(chars, 0, chars.length);
+                            binding.btnUnlock.performClick();
+                        } catch (BadPaddingException | IllegalBlockSizeException e) {
+                            e.printStackTrace();
+                            Toaster.getInstance(requireActivity()).showShort(e.toString());
+                        }
+                    }
+                }
+
+                @Override
+                public void onAuthenticationFailed() {
+                    super.onAuthenticationFailed();
+                    SecureLog.d(TAG, "onAuthenticationFailed");
+                }
+            });
+
+            promptInfo = new BiometricPrompt.PromptInfo.Builder()
+                    .setTitle(getString(R.string.biometrics_unlock_title))
+                    .setNegativeButtonText(getString(R.string.cancel))
+                    .setAllowedAuthenticators(BIOMETRIC_STRONG)
+                    .build();
+
+            binding.biometrics.setOnClickListener(v -> {
+                try {
+                    Cipher cipher = Encryption.getBiometricCipher();
+                    SecretKey secretKey = Encryption.getOrGenerateBiometricSecretKey();
+                    cipher.init(Cipher.DECRYPT_MODE, secretKey, new IvParameterSpec(settings.getBiometricsIv()));
+                    biometricPrompt.authenticate(promptInfo, new BiometricPrompt.CryptoObject(cipher));
+                } catch (KeyStoreException | CertificateException | IOException |
+                         NoSuchAlgorithmException | NoSuchProviderException |
+                         InvalidAlgorithmParameterException | UnrecoverableKeyException |
+                         InvalidKeyException | NoSuchPaddingException e) {
+                    e.printStackTrace();
+                    Toaster.getInstance(requireContext()).showShort(e.toString());
+                }
+            });
+            binding.biometrics.performClick();
+        } else {
+            binding.biometrics.setVisibility(View.GONE);
+        }
+    }
+
+    /**
+     * Perform security checks on app startup.
+     * Blocks access if device is rooted or tampered.
+     */
+    private void performSecurityChecks(Settings settings) {
+        new Thread(() -> {
+            boolean isRooted = SecurityUtils.isRooted();
+            boolean hasMagisk = SecurityUtils.hasMagisk();
+
+            if (isRooted || hasMagisk) {
+                requireActivity().runOnUiThread(() -> {
+                    // Disable all UI elements
+                    binding.eTPassword.setEnabled(false);
+                    binding.btnUnlock.setEnabled(false);
+                    binding.biometrics.setEnabled(false);
+                    binding.biometrics.setVisibility(View.GONE);
+
+                    // Show security warning
+                    new androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                            .setTitle(R.string.security_warning_title)
+                            .setMessage(R.string.security_warning_rooted)
+                            .setCancelable(false)
+                            .setPositiveButton(R.string.exit, (dialog, which) -> {
+                                requireActivity().finishAffinity();
+                            })
+                            .show();
+                });
+            }
+        }).start();
+    }
+
+}
