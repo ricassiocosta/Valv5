@@ -40,6 +40,7 @@ import ricassiocosta.me.valv5.R;
 import ricassiocosta.me.valv5.databinding.DialogEditNoteBinding;
 import ricassiocosta.me.valv5.databinding.DialogImportTextBinding;
 import ricassiocosta.me.valv5.databinding.DialogSetIterationCountBinding;
+import ricassiocosta.me.valv5.databinding.DialogCreateEncryptedFolderBinding;
 import ricassiocosta.me.valv5.interfaces.IOnEdited;
 
 public class Dialogs {
@@ -261,6 +262,32 @@ public class Dialogs {
                     }
                 })
                 .setPositiveButton(context.getString(R.string.remove), (dialog, which) -> onEditedIncludedFolders.onRemoved(selectedToRemove))
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    /**
+     * Show dialog to create an encrypted folder.
+     * 
+     * @param context The activity context
+     * @param onFolderNameEntered Callback when a valid folder name is entered
+     */
+    public static void showCreateEncryptedFolderDialog(FragmentActivity context, @NonNull IOnEdited onFolderNameEntered) {
+        DialogCreateEncryptedFolderBinding binding = DialogCreateEncryptedFolderBinding.inflate(context.getLayoutInflater(), null, false);
+        
+        new MaterialAlertDialogBuilder(context)
+                .setTitle(context.getString(R.string.dialog_create_folder_title))
+                .setView(binding.getRoot())
+                .setPositiveButton(R.string.save, (dialog, which) -> {
+                    String folderName = binding.folderName.getText() != null 
+                            ? binding.folderName.getText().toString().trim() 
+                            : "";
+                    if (folderName.isEmpty()) {
+                        Toaster.getInstance(context).showShort(context.getString(R.string.dialog_create_folder_error_empty));
+                    } else {
+                        onFolderNameEntered.onEdited(folderName);
+                    }
+                })
                 .setNegativeButton(android.R.string.cancel, null)
                 .show();
     }

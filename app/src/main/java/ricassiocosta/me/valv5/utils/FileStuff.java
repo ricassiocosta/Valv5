@@ -119,7 +119,10 @@ public class FileStuff {
         // Process files and find their thumbnails/notes
         for (CursorFile file : documentFiles) {
             if (file.isDirectory()) {
-                galleryFiles.add(GalleryFile.asDirectory(file));
+                GalleryFile dir = GalleryFile.asDirectory(file);
+                // Try to decrypt folder name if it looks like an encrypted folder
+                tryDecryptFolderName(dir);
+                galleryFiles.add(dir);
                 continue;
             }
             
@@ -437,5 +440,77 @@ public class FileStuff {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Try to decrypt an encrypted folder name.
+     * If decryption succeeds, sets isEncryptedFolder=true and decryptedFolderName on the GalleryFile.
+     * If decryption fails (wrong password or not an encrypted folder), leaves the GalleryFile unchanged.
+     * 
+     * @param folder The GalleryFile representing the folder
+     */
+    private static void tryDecryptFolderName(@NonNull GalleryFile folder) {
+        if (!folder.isDirectory()) {
+            return;
+        }
+        
+        String folderName = folder.getEncryptedName();
+        if (folderName == null) {
+            return;
+        }
+        
+        // Quick heuristic check - encrypted folder names are long base64url strings
+        if (!Encryption.looksLikeEncryptedFolder(folderName)) {
+            return;
+        }
+        
+        // Get password from current session
+        Password passwordInstance = Password.getInstance();
+        char[] password = passwordInstance.getPassword();
+        if (password == null) {
+            return;
+        }
+        
+        // Try to decrypt
+        String decryptedName = Encryption.decryptFolderName(folderName, password);
+        if (decryptedName != null) {
+            folder.setEncryptedFolder(true);
+            folder.setDecryptedFolderName(decryptedName);
+        }
+        // If decryption fails, folder remains as a regular folder with original name
+    }
+
+    /**
+     * Create an encrypted folder in the specified parent directory.
+     * 
+     * @param context The Android context
+     * @param parentDirectory The parent directory to create the folder in
+     * @param originalName The original folder name (max 30 characters)
+     * @param password The user's password
+     * @return The URI of the created folder, or null on error
+     * @throws IllegalArgumentException if originalName exceeds 30 characters
+     */
+    @Nullable
+    public static Uri createEncryptedFolder(Context context, @NonNull DocumentFile parentDirectory, 
+            @NonNull String originalName, @NonNull char[] password) {
+        if (originalName.length() > Encryption.MAX_FOLDER_NAME_LENGTH) {
+            throw new IllegalArgumentException("Folder name exceeds maximum length of " + Encryption.MAX_FOLDER_NAME_LENGTH);
+        }
+        
+        // Create encrypted folder name
+        String encryptedName = Encryption.createEncryptedFolderName(originalName, password);
+        if (encryptedName == null) {
+            SecureLog.e(TAG, "createEncryptedFolder: Failed to encrypt folder name");
+            return null;
+        }
+        
+        // Create the directory using SAF
+        DocumentFile newFolder = parentDirectory.createDirectory(encryptedName);
+        if (newFolder == null) {
+            SecureLog.e(TAG, "createEncryptedFolder: Failed to create directory");
+            return null;
+        }
+        
+        return newFolder.getUri();
     }
 }

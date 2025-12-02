@@ -86,6 +86,9 @@ public class Password {
         }
         p.clear();
         
+        // Clear encrypted folder name cache
+        ricassiocosta.me.valv5.encryption.FolderNameCache.getInstance().clear();
+        
         // Destroy ephemeral session key - invalidates all cached data
         EphemeralSessionKey.getInstance().destroy();
         

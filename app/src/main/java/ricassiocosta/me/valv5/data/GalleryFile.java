@@ -59,6 +59,10 @@ public class GalleryFile implements Comparable<GalleryFile> {
     private String originalName, nameWithPath, note, text;
     private int fileCount, orientation;
     private ricassiocosta.me.valv5.encryption.CompositeStreams compositeStreams;  // V5: Lazy-loaded composite streams
+    
+    // Encrypted folder support
+    private boolean isEncryptedFolder;
+    private String decryptedFolderName;
 
     private GalleryFile(String name) {
         this.fileUri = null;
@@ -254,6 +258,10 @@ public class GalleryFile implements Comparable<GalleryFile> {
         if (isAllFolder) {
             return name;
         }
+        // For encrypted folders, return the decrypted name
+        if (isEncryptedFolder && decryptedFolderName != null) {
+            return decryptedFolderName;
+        }
         if (nameWithPath == null) {
             nameWithPath = FileStuff.getFilenameWithPathFromUri(fileUri);
         }
@@ -447,6 +455,49 @@ public class GalleryFile implements Comparable<GalleryFile> {
 
     public boolean isDirectory() {
         return isDirectory;
+    }
+
+    /**
+     * Check if this is an encrypted folder (name encrypted with user password).
+     */
+    public boolean isEncryptedFolder() {
+        return isEncryptedFolder;
+    }
+
+    /**
+     * Set whether this folder is an encrypted folder.
+     */
+    public void setEncryptedFolder(boolean encryptedFolder) {
+        this.isEncryptedFolder = encryptedFolder;
+    }
+
+    /**
+     * Get the decrypted folder name (original name before encryption).
+     * Returns null if this is not an encrypted folder or if decryption failed.
+     */
+    @Nullable
+    public String getDecryptedFolderName() {
+        return decryptedFolderName;
+    }
+
+    /**
+     * Set the decrypted folder name.
+     */
+    public void setDecryptedFolderName(@Nullable String decryptedFolderName) {
+        this.decryptedFolderName = decryptedFolderName;
+    }
+
+    /**
+     * Get the display name for this folder.
+     * Returns the decrypted name if this is an encrypted folder and decryption succeeded,
+     * otherwise returns the raw folder name.
+     */
+    @NonNull
+    public String getDisplayName() {
+        if (isEncryptedFolder && decryptedFolderName != null) {
+            return decryptedFolderName;
+        }
+        return name != null ? name : (encryptedName != null ? encryptedName : "");
     }
 
     public long getLastModified() {

@@ -1938,4 +1938,190 @@ public class Encryption {
         Arrays.fill(byteBuffer.array(), (byte) 0); // clear sensitive data
         return chars;
     }
+
+    // ================================
+    // Encrypted Folder Name Support
+    // ================================
+    
+    // Maximum length for original folder names (in characters)
+    // This ensures the encrypted base64url result fits within filesystem limits
+    public static final int MAX_FOLDER_NAME_LENGTH = 30;
+    
+    /**
+     * Create an encrypted folder name from an original folder name.
+     * 
+     * The encrypted format is: base64url([salt:16][iv:12][ciphertext:N][tag:16])
+     * - Uses ChaCha20-Poly1305 AEAD for authenticated encryption
+     * - Uses Argon2id KDF for key derivation (same as V5 files)
+     * - No prefix or suffix - just raw base64url for privacy
+     * 
+     * @param originalName The original folder name (max 30 characters)
+     * @param password The user's password
+     * @return The encrypted folder name as base64url string, or null on error
+     * @throws IllegalArgumentException if originalName exceeds MAX_FOLDER_NAME_LENGTH
+     */
+    @Nullable
+    public static String createEncryptedFolderName(@NonNull String originalName, @NonNull char[] password) {
+        if (originalName.length() > MAX_FOLDER_NAME_LENGTH) {
+            throw new IllegalArgumentException("Folder name exceeds maximum length of " + MAX_FOLDER_NAME_LENGTH);
+        }
+        
+        try {
+            // Generate random salt and IV
+            SecureRandom secureRandom = new SecureRandom();
+            byte[] salt = new byte[SALT_LENGTH];
+            byte[] iv = new byte[IV_LENGTH];
+            secureRandom.nextBytes(salt);
+            secureRandom.nextBytes(iv);
+            
+            // Derive key using Argon2id
+            SecretKey key = deriveKey(password, salt, ARGON2_ITERATIONS, true);
+            if (key == null) {
+                SecureLog.e(TAG, "createEncryptedFolderName: Failed to derive key");
+                return null;
+            }
+            
+            try {
+                // Encrypt using ChaCha20-Poly1305 AEAD
+                Cipher cipher = Cipher.getInstance(CIPHER_AEAD);
+                AlgorithmParameterSpec ivSpec = new IvParameterSpec(iv);
+                cipher.init(Cipher.ENCRYPT_MODE, key, ivSpec);
+                
+                byte[] plaintext = originalName.getBytes(StandardCharsets.UTF_8);
+                byte[] ciphertext = cipher.doFinal(plaintext);
+                // ciphertext includes the Poly1305 tag (16 bytes appended)
+                
+                // Combine: salt + iv + ciphertext (with tag)
+                byte[] combined = new byte[SALT_LENGTH + IV_LENGTH + ciphertext.length];
+                System.arraycopy(salt, 0, combined, 0, SALT_LENGTH);
+                System.arraycopy(iv, 0, combined, SALT_LENGTH, IV_LENGTH);
+                System.arraycopy(ciphertext, 0, combined, SALT_LENGTH + IV_LENGTH, ciphertext.length);
+                
+                // Encode as base64url (no padding)
+                String encoded = android.util.Base64.encodeToString(combined, 
+                        android.util.Base64.URL_SAFE | android.util.Base64.NO_PADDING | android.util.Base64.NO_WRAP);
+                
+                // Clear sensitive data
+                Arrays.fill(plaintext, (byte) 0);
+                Arrays.fill(salt, (byte) 0);
+                Arrays.fill(iv, (byte) 0);
+                
+                return encoded;
+            } finally {
+                // Securely destroy the key
+                try {
+                    key.destroy();
+                } catch (DestroyFailedException ignored) {
+                    // Key may not support destruction
+                }
+            }
+        } catch (Exception e) {
+            SecureLog.e(TAG, "createEncryptedFolderName: Encryption failed", e);
+            return null;
+        }
+    }
+    
+    /**
+     * Decrypt an encrypted folder name.
+     * 
+     * @param encryptedName The base64url-encoded encrypted folder name
+     * @param password The user's password
+     * @return The original folder name, or null if decryption fails
+     */
+    @Nullable
+    public static String decryptFolderName(@NonNull String encryptedName, @NonNull char[] password) {
+        // Check cache first
+        FolderNameCache cache = FolderNameCache.getInstance();
+        String cached = cache.get(encryptedName);
+        if (cached != null) {
+            return cached;
+        }
+        
+        try {
+            // Decode base64url
+            byte[] combined = android.util.Base64.decode(encryptedName, 
+                    android.util.Base64.URL_SAFE | android.util.Base64.NO_PADDING);
+            
+            // Minimum size: salt (16) + iv (12) + tag (16) + at least 1 byte ciphertext
+            if (combined.length < SALT_LENGTH + IV_LENGTH + POLY1305_TAG_LENGTH + 1) {
+                return null;
+            }
+            
+            // Extract components
+            byte[] salt = new byte[SALT_LENGTH];
+            byte[] iv = new byte[IV_LENGTH];
+            byte[] ciphertext = new byte[combined.length - SALT_LENGTH - IV_LENGTH];
+            
+            System.arraycopy(combined, 0, salt, 0, SALT_LENGTH);
+            System.arraycopy(combined, SALT_LENGTH, iv, 0, IV_LENGTH);
+            System.arraycopy(combined, SALT_LENGTH + IV_LENGTH, ciphertext, 0, ciphertext.length);
+            
+            // Derive key using Argon2id
+            SecretKey key = deriveKey(password, salt, ARGON2_ITERATIONS, true);
+            if (key == null) {
+                return null;
+            }
+            
+            try {
+                // Decrypt using ChaCha20-Poly1305 AEAD
+                Cipher cipher = Cipher.getInstance(CIPHER_AEAD);
+                AlgorithmParameterSpec ivSpec = new IvParameterSpec(iv);
+                cipher.init(Cipher.DECRYPT_MODE, key, ivSpec);
+                
+                byte[] plaintext = cipher.doFinal(ciphertext);
+                String originalName = new String(plaintext, StandardCharsets.UTF_8);
+                
+                // Cache the result
+                cache.put(encryptedName, originalName);
+                
+                // Clear sensitive data
+                Arrays.fill(plaintext, (byte) 0);
+                Arrays.fill(salt, (byte) 0);
+                Arrays.fill(iv, (byte) 0);
+                
+                return originalName;
+            } finally {
+                try {
+                    key.destroy();
+                } catch (DestroyFailedException ignored) {
+                }
+            }
+        } catch (AEADBadTagException e) {
+            // Authentication failed - not an encrypted folder or wrong password
+            return null;
+        } catch (IllegalArgumentException e) {
+            // Invalid base64 - not an encrypted folder name
+            return null;
+        } catch (Exception e) {
+            SecureLog.e(TAG, "decryptFolderName: Decryption failed", e);
+            return null;
+        }
+    }
+    
+    /**
+     * Check if a folder name could be an encrypted folder name.
+     * This is a quick heuristic check before attempting full decryption.
+     * 
+     * @param folderName The folder name to check
+     * @return true if the name looks like an encrypted folder name
+     */
+    public static boolean looksLikeEncryptedFolder(@NonNull String folderName) {
+        // Encrypted folder names are base64url encoded
+        // Minimum length: (16 + 12 + 16 + 1) bytes = 45 bytes -> ~60 chars in base64
+        // They should only contain base64url characters: A-Z, a-z, 0-9, -, _
+        if (folderName.length() < 60) {
+            return false;
+        }
+        
+        // Check for valid base64url characters only
+        for (int i = 0; i < folderName.length(); i++) {
+            char c = folderName.charAt(i);
+            if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || 
+                  (c >= '0' && c <= '9') || c == '-' || c == '_')) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
 }

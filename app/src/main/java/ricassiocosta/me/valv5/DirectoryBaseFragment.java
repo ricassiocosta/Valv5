@@ -689,6 +689,9 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         } else if (id == R.id.toggle_filename) {
             settings.setShowFilenames(galleryGridAdapter.toggleFilenames());
             return true;
+        } else if (id == R.id.create_encrypted_folder) {
+            showCreateEncryptedFolderDialog();
+            return true;
         } else if (id == R.id.select_all) {
             galleryGridAdapter.selectAll();
             return true;
@@ -794,6 +797,73 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         showViewpager(false, galleryViewModel.getCurrentPosition(), false);
         
         navigateToParentFolder(fileUri);
+    }
+
+    /**
+     * Show dialog to create an encrypted folder in the current directory.
+     */
+    private void showCreateEncryptedFolderDialog() {
+        FragmentActivity activity = getActivity();
+        if (activity == null) {
+            return;
+        }
+        
+        Uri currentDirUri = galleryViewModel.getCurrentDirectoryUri();
+        if (currentDirUri == null) {
+            Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed));
+            return;
+        }
+        
+        Dialogs.showCreateEncryptedFolderDialog(activity, folderName -> {
+            if (folderName == null || folderName.isEmpty()) {
+                return;
+            }
+            
+            // Create encrypted folder in background
+            new Thread(() -> {
+                try {
+                    char[] password = Password.getInstance().getPassword();
+                    if (password == null) {
+                        activity.runOnUiThread(() -> 
+                            Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed)));
+                        return;
+                    }
+                    
+                    androidx.documentfile.provider.DocumentFile parentDir = 
+                            androidx.documentfile.provider.DocumentFile.fromTreeUri(requireContext(), currentDirUri);
+                    if (parentDir == null || !parentDir.isDirectory()) {
+                        activity.runOnUiThread(() -> 
+                            Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed)));
+                        return;
+                    }
+                    
+                    Uri newFolderUri = FileStuff.createEncryptedFolder(requireContext(), parentDir, folderName, password);
+                    
+                    if (newFolderUri != null) {
+                        activity.runOnUiThread(() -> {
+                            Toaster.getInstance(requireContext()).showShort(
+                                    getString(R.string.dialog_create_folder_success, folderName));
+                            // Add the new folder to the gallery view
+                            GalleryFile newFolder = GalleryFile.asDirectory(newFolderUri);
+                            newFolder.setEncryptedFolder(true);
+                            newFolder.setDecryptedFolderName(folderName);
+                            synchronized (LOCK) {
+                                galleryViewModel.getGalleryFiles().add(0, newFolder);
+                                galleryGridAdapter.notifyItemInserted(0);
+                                galleryPagerAdapter.notifyItemInserted(0);
+                            }
+                        });
+                    } else {
+                        activity.runOnUiThread(() -> 
+                            Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed)));
+                    }
+                } catch (Exception e) {
+                    SecureLog.e(TAG, "Error creating encrypted folder", e);
+                    activity.runOnUiThread(() -> 
+                        Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed)));
+                }
+            }).start();
+        });
     }
 
     @Override
