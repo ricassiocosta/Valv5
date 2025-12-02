@@ -70,6 +70,8 @@ import java.security.spec.KeySpec;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.crypto.AEADBadTagException;
@@ -272,16 +274,21 @@ public class Encryption {
                 // Get file size
                 long fileSize = sourceFile.length();
 
-                // Generate thumbnail asynchronously and get bitmap
+                // Generate thumbnail from source file
+                // Note: Use applicationContext for Glide since this may run on background thread
                 Bitmap thumbBitmap = null;
                 try {
-                    thumbBitmap = Glide.with(context)
+                    thumbBitmap = Glide.with(context.getApplicationContext())
                             .asBitmap()
                             .load(sourceFile.getUri())
+                            .centerCrop()
+                            .override(512, 512)  // Request a reasonable thumbnail size
                             .submit()
-                            .get();
-                } catch (ExecutionException | InterruptedException e) {
-                    SecureLog.w(TAG, "importFileToDirectory: could not generate thumbnail", e);
+                            .get(30, TimeUnit.SECONDS);  // Add timeout
+                    SecureLog.d(TAG, "importFileToDirectory: thumbnail generated successfully, size=" + 
+                            (thumbBitmap != null ? thumbBitmap.getWidth() + "x" + thumbBitmap.getHeight() : "null"));
+                } catch (ExecutionException | InterruptedException | TimeoutException e) {
+                    SecureLog.w(TAG, "importFileToDirectory: could not generate thumbnail for " + sourceFile.getName(), e);
                 }
 
                 // Convert thumbnail to byte array (JPEG)
@@ -814,9 +821,12 @@ public class Encryption {
         // Record which sections are present
         JSONObject sectionsObj = new JSONObject();
         sectionsObj.put("FILE", true);
-        sectionsObj.put("THUMBNAIL", thumbnailInputStream != null && thumbnailSize > 0);
+        boolean hasThumbnail = thumbnailInputStream != null && thumbnailSize > 0;
+        sectionsObj.put("THUMBNAIL", hasThumbnail);
         sectionsObj.put("NOTE", noteBytes != null && noteBytes.length > 0);
         json.put("sections", sectionsObj);
+        
+        SecureLog.d(TAG, "writeCompositeFileAEAD: hasThumbnail=" + hasThumbnail + ", thumbnailSize=" + thumbnailSize);
 
         // Write metadata with newline delimiters
         plaintextBuffer.write(("\n" + json + "\n").getBytes(StandardCharsets.UTF_8));
@@ -825,11 +835,13 @@ public class Encryption {
         SectionWriter sectionWriter = new SectionWriter(plaintextBuffer);
         byte[] fileData = readAllBytes(fileInputStream);
         sectionWriter.writeFileSection(new ByteArrayInputStream(fileData), fileData.length);
+        SecureLog.d(TAG, "writeCompositeFileAEAD: wrote FILE section, size=" + fileData.length);
 
         // Write THUMBNAIL section if present
-        if (thumbnailInputStream != null && thumbnailSize > 0) {
+        if (hasThumbnail) {
             byte[] thumbData = readAllBytes(thumbnailInputStream);
             sectionWriter.writeThumbnailSection(new ByteArrayInputStream(thumbData), thumbData.length);
+            SecureLog.d(TAG, "writeCompositeFileAEAD: wrote THUMBNAIL section, size=" + thumbData.length);
         }
 
         // Write NOTE section if present
@@ -1046,7 +1058,8 @@ public class Encryption {
     private static void createThumb(FragmentActivity context, Uri input, DocumentFile outputThumbFile, char[] password, String sourceFileName, int version, int fileType, ContentType contentType, @Nullable RelatedFile[] relatedFiles) throws GeneralSecurityException, IOException, ExecutionException, InterruptedException, JSONException {
         Streams streams = getCipherOutputStream(context, input, outputThumbFile, password, sourceFileName, version, fileType, contentType, relatedFiles);
 
-        Bitmap bitmap = Glide.with(context).asBitmap().load(input).centerCrop().submit(512, 512).get();
+        // Use applicationContext for Glide since this may run on background thread
+        Bitmap bitmap = Glide.with(context.getApplicationContext()).asBitmap().load(input).centerCrop().submit(512, 512).get();
 
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
         bitmap.compress(Bitmap.CompressFormat.JPEG, 75, stream);
@@ -1689,29 +1702,42 @@ public class Encryption {
             InputStream inputStream = context.getContentResolver().openInputStream(encryptedInput);
             Streams cis = getCipherInputStream(inputStream, password, false, ENCRYPTION_VERSION_5);
 
+            SecureLog.d(TAG, "readCompositeMetadata: compositeStreams=" + (cis.compositeStreams != null));
+            
             Uri thumbUri = null;
-            if (cis.compositeStreams != null && cis.compositeStreams.hasThumbnailSection()) {
-                // Create cache file for thumbnail
-                File cacheDir = context.getCacheDir();
-                cacheDir.mkdir();
-                Path thumbFile = Files.createTempFile(cacheDir.toPath(), null, ".jpg");
+            if (cis.compositeStreams != null) {
+                boolean hasThumbnail = cis.compositeStreams.hasThumbnailSection();
+                SecureLog.d(TAG, "readCompositeMetadata: hasThumbnailSection=" + hasThumbnail);
                 
-                // Write thumbnail to cache
-                try (InputStream thumbInputStream = cis.compositeStreams.getThumbnailInputStream();
-                     OutputStream fos = new FileOutputStream(thumbFile.toFile())) {
-                    if (thumbInputStream != null) {
-                        byte[] buffer = new byte[8192];
-                        int read;
-                        while ((read = thumbInputStream.read(buffer)) != -1) {
-                            fos.write(buffer, 0, read);
+                if (hasThumbnail) {
+                    // Create cache file for thumbnail
+                    File cacheDir = context.getCacheDir();
+                    cacheDir.mkdir();
+                    Path thumbFile = Files.createTempFile(cacheDir.toPath(), null, ".jpg");
+                    
+                    // Write thumbnail to cache
+                    try (InputStream thumbInputStream = cis.compositeStreams.getThumbnailInputStream();
+                         OutputStream fos = new FileOutputStream(thumbFile.toFile())) {
+                        if (thumbInputStream != null) {
+                            byte[] buffer = new byte[8192];
+                            int read;
+                            int totalBytes = 0;
+                            while ((read = thumbInputStream.read(buffer)) != -1) {
+                                fos.write(buffer, 0, read);
+                                totalBytes += read;
+                            }
+                            SecureLog.d(TAG, "readCompositeMetadata: wrote " + totalBytes + " bytes to thumb cache");
                         }
                     }
+                    thumbUri = Uri.fromFile(thumbFile.toFile());
+                    SecureLog.d(TAG, "readCompositeMetadata: thumbUri=" + thumbUri);
                 }
-                thumbUri = Uri.fromFile(thumbFile.toFile());
             }
 
             int fileType = cis.getFileType();
             String originalName = cis.getOriginalFileName();
+            
+            SecureLog.d(TAG, "readCompositeMetadata: fileType=" + fileType + ", originalName=" + originalName);
             
             cis.close();
             inputStream.close();
@@ -1719,6 +1745,7 @@ public class Encryption {
             return new V5MetadataResult(thumbUri, fileType, originalName);
         } catch (GeneralSecurityException | InvalidPasswordException | JSONException |
                  IOException e) {
+            SecureLog.e(TAG, "readCompositeMetadata: error", e);
             e.printStackTrace();
             return null;
         }
