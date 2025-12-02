@@ -77,6 +77,10 @@ public class SecureMemoryManager {
     private final Set<WeakReference<LruCache<?, ?>>> registeredCaches = 
             Collections.newSetFromMap(new ConcurrentHashMap<>());
     
+    // Track Maps that need clearing on lock (e.g., password verification caches)
+    private final Set<WeakReference<Map<?, ?>>> registeredMaps = 
+            Collections.newSetFromMap(new ConcurrentHashMap<>());
+    
     // Flag to indicate if paranoid mode is enabled (multiple wipe patterns)
     private final AtomicBoolean paranoidMode = new AtomicBoolean(false);
     
@@ -152,6 +156,16 @@ public class SecureMemoryManager {
     public void registerCache(@Nullable LruCache<?, ?> cache) {
         if (cache != null) {
             registeredCaches.add(new WeakReference<>(cache));
+        }
+    }
+    
+    /**
+     * Register a Map for clearing on cleanup (e.g., password verification caches).
+     * The map will be cleared when wipeAll() is called (on lock/close).
+     */
+    public void registerMap(@Nullable Map<?, ?> map) {
+        if (map != null) {
+            registeredMaps.add(new WeakReference<>(map));
         }
     }
     
@@ -384,12 +398,25 @@ public class SecureMemoryManager {
             cacheIterator.remove();
         }
         
+        // Clear Maps (e.g., password verification caches)
+        int clearedMaps = 0;
+        Iterator<WeakReference<Map<?, ?>>> mapIterator = registeredMaps.iterator();
+        while (mapIterator.hasNext()) {
+            WeakReference<Map<?, ?>> ref = mapIterator.next();
+            Map<?, ?> map = ref.get();
+            if (map != null) {
+                map.clear();
+                clearedMaps++;
+            }
+            mapIterator.remove();
+        }
+        
         // Force garbage collection to help clear unreferenced sensitive data
         System.gc();
         
         SecureLog.d(TAG, String.format(
-                "Wiped: %d byte arrays, %d char arrays, %d ByteBuffers, %d Bitmaps, %d caches",
-                wipedByteArrays, wipedCharArrays, wipedByteBuffers, wipedBitmaps, clearedCaches
+                "Wiped: %d byte arrays, %d char arrays, %d ByteBuffers, %d Bitmaps, %d caches, %d maps",
+                wipedByteArrays, wipedCharArrays, wipedByteBuffers, wipedBitmaps, clearedCaches, clearedMaps
         ));
     }
     
@@ -445,6 +472,7 @@ public class SecureMemoryManager {
         registeredByteBuffers.removeIf(ref -> ref.get() == null);
         registeredBitmaps.removeIf(ref -> ref.get() == null);
         registeredCaches.removeIf(ref -> ref.get() == null);
+        registeredMaps.removeIf(ref -> ref.get() == null);
     }
     
     /**
@@ -453,12 +481,13 @@ public class SecureMemoryManager {
     public String getStats() {
         cleanupStaleReferences();
         return String.format(
-                "Registered: %d byte arrays, %d char arrays, %d ByteBuffers, %d Bitmaps, %d caches",
+                "Registered: %d byte arrays, %d char arrays, %d ByteBuffers, %d Bitmaps, %d caches, %d maps",
                 registeredByteArrays.size(),
                 registeredCharArrays.size(),
                 registeredByteBuffers.size(),
                 registeredBitmaps.size(),
-                registeredCaches.size()
+                registeredCaches.size(),
+                registeredMaps.size()
         );
     }
 }

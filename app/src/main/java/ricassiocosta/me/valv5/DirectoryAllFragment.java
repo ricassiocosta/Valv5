@@ -1,5 +1,6 @@
 package ricassiocosta.me.valv5;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -15,26 +16,60 @@ import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import ricassiocosta.me.valv5.data.GalleryFile;
 import ricassiocosta.me.valv5.data.Password;
 import ricassiocosta.me.valv5.data.UniqueLinkedList;
 import ricassiocosta.me.valv5.encryption.Encryption;
 import ricassiocosta.me.valv5.exception.InvalidPasswordException;
+import ricassiocosta.me.valv5.security.SecureMemoryManager;
 import ricassiocosta.me.valv5.utils.FileStuff;
 import ricassiocosta.me.valv5.utils.Settings;
 
 public class DirectoryAllFragment extends DirectoryBaseFragment {
     private static final String TAG = "DirectoryAllFragment";
 
-    private int foundFiles = 0, foundFolders = 0;
+    // Thread pool with fixed size based on CPU cores (max 4 to avoid overhead)
+    private static final int THREAD_POOL_SIZE = Math.min(Runtime.getRuntime().availableProcessors(), 4);
+    
+    // Batch size for incremental UI updates
+    private static final int BATCH_SIZE = 20;
+    
+    // In-memory cache for password verification results per folder URI
+    private final Map<String, Boolean> passwordVerifiedCache = new ConcurrentHashMap<>();
+    
+    private final AtomicInteger foundFiles = new AtomicInteger(0);
+    private final AtomicInteger foundFolders = new AtomicInteger(0);
+    
+    // Flag to track if loading is complete
+    private final AtomicBoolean loadingComplete = new AtomicBoolean(false);
+    
+    // Thread-safe list of all files found (for when user changes filter)
+    private final List<GalleryFile> allFilesFound = Collections.synchronizedList(new UniqueLinkedList<>());
+    
+    // Pending files batch to add to UI
+    private final List<GalleryFile> pendingBatch = Collections.synchronizedList(new ArrayList<>());
+    
+    private ExecutorService executorService;
+    private Thread mainScanThread;
 
     @Override
     public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         binding.layoutFabsAdd.setVisibility(View.GONE);
         binding.noMedia.setVisibility(View.GONE);
+        
+        // Register password cache with SecureMemoryManager so it's cleared on lock
+        SecureMemoryManager.getInstance().registerMap(passwordVerifiedCache);
     }
 
     public void init() {
@@ -76,7 +111,9 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
         setClickListeners();
 
         if (!galleryViewModel.isInitialised()) {
-            findAllFiles();
+            // Start with RANDOM order - enables lazy loading
+            orderBy = ORDER_BY_RANDOM;
+            findAllFilesLazy();
         }
 
         initViewModels();
@@ -107,17 +144,180 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
 
     }
 
-    private void findAllFiles() {
-        SecureLog.d(TAG, "findAllFiles: start");
-        foundFiles = 0;
-        foundFolders = 0;
-        setLoading(true);
-        new Thread(() -> {
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        // Cancel any pending filter wait
+        filterWaitCancelled.set(true);
+        if (filterWaitThread != null) {
+            filterWaitThread.interrupt();
+            filterWaitThread = null;
+        }
+        // Shutdown executor and clear cache when view is destroyed
+        shutdownExecutor();
+        passwordVerifiedCache.clear();
+        allFilesFound.clear();
+        pendingBatch.clear();
+    }
+    
+    private void shutdownExecutor() {
+        if (mainScanThread != null) {
+            mainScanThread.interrupt();
+            mainScanThread = null;
+        }
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.shutdownNow();
+            executorService = null;
+        }
+    }
+    
+    /**
+     * Check if background loading is still in progress
+     */
+    public boolean isLoadingInProgress() {
+        return !loadingComplete.get();
+    }
+    
+    // Flag to track if user cancelled waiting for filter
+    private final AtomicBoolean filterWaitCancelled = new AtomicBoolean(false);
+    
+    // Thread that's waiting for loading to complete (for filter)
+    private Thread filterWaitThread;
+    
+    // Flag to track if filter overlay is showing (to update progress on it)
+    private final AtomicBoolean filterOverlayShowing = new AtomicBoolean(false);
+    
+    /**
+     * Show the full-screen loading overlay with cancel button.
+     * Used when user selects a filter that requires all files to be loaded.
+     */
+    private void showFilterLoadingOverlay(int targetOrder) {
+        FragmentActivity activity = getActivity();
+        if (activity == null || !isSafe()) {
+            return;
+        }
+        
+        filterWaitCancelled.set(false);
+        filterOverlayShowing.set(true);
+        
+        activity.runOnUiThread(() -> {
+            // Hide bottom indicator - only one should be visible at a time
+            binding.loadingIndicatorBottom.setVisibility(View.GONE);
+            
+            // Show full overlay
+            binding.cLLoading.txtLoading.setText(R.string.gallery_loading_finalizing);
+            binding.cLLoading.txtProgress.setText(getString(R.string.gallery_loading_all_progress, foundFiles.get(), foundFolders.get()));
+            binding.cLLoading.txtProgress.setVisibility(View.VISIBLE);
+            binding.cLLoading.btnCancelLoading.setVisibility(View.VISIBLE);
+            binding.cLLoading.cLLoading.setVisibility(View.VISIBLE);
+            
+            // Setup cancel button
+            binding.cLLoading.btnCancelLoading.setOnClickListener(v -> {
+                // Cancel waiting and revert to random
+                filterWaitCancelled.set(true);
+                filterOverlayShowing.set(false);
+                if (filterWaitThread != null) {
+                    filterWaitThread.interrupt();
+                }
+                
+                // Hide overlay
+                binding.cLLoading.cLLoading.setVisibility(View.GONE);
+                binding.cLLoading.btnCancelLoading.setVisibility(View.GONE);
+                
+                // Show bottom indicator again if still loading
+                if (isLoadingInProgress()) {
+                    binding.loadingIndicatorBottom.setVisibility(View.VISIBLE);
+                }
+                
+                // Revert to random order
+                orderBy = ORDER_BY_RANDOM;
+            });
+        });
+        
+        // Start thread to wait for loading completion
+        filterWaitThread = new Thread(() -> {
+            // Wait for the main scan thread to complete
+            if (mainScanThread != null && mainScanThread.isAlive()) {
+                try {
+                    mainScanThread.join();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+            
+            // Check if cancelled
+            if (filterWaitCancelled.get() || !isSafe()) {
+                return;
+            }
+            
+            filterOverlayShowing.set(false);
+            
+            FragmentActivity act = getActivity();
+            if (act == null) {
+                return;
+            }
+            
+            // Hide overlay and apply the filter
+            act.runOnUiThread(() -> {
+                binding.cLLoading.cLLoading.setVisibility(View.GONE);
+                binding.cLLoading.btnCancelLoading.setVisibility(View.GONE);
+            });
+            
+            // Apply the sort
+            DirectoryAllFragment.super.orderBy(targetOrder);
+        });
+        filterWaitThread.start();
+    }
+    
+    /**
+     * Override orderBy to handle the case where loading is still in progress.
+     * If user selects a non-random filter while loading, show overlay with cancel option.
+     */
+    @Override
+    @SuppressLint("NotifyDataSetChanged")
+    void orderBy(int order) {
+        if (order != ORDER_BY_RANDOM && isLoadingInProgress()) {
+            // User wants a sorted view but loading isn't complete
+            // Show full-screen overlay with cancel button
+            showFilterLoadingOverlay(order);
+            this.orderBy = order;
+        } else {
+            // Random order or loading complete - proceed normally
+            super.orderBy(order);
+            this.orderBy = order;
+        }
+    }
+
+    /**
+     * Lazy loading implementation - shows files incrementally as they are found.
+     * Uses RANDOM order by default which doesn't require all files to be loaded.
+     */
+    private void findAllFilesLazy() {
+        SecureLog.d(TAG, "findAllFilesLazy: start");
+        foundFiles.set(0);
+        foundFolders.set(0);
+        loadingComplete.set(false);
+        passwordVerifiedCache.clear();
+        allFilesFound.clear();
+        pendingBatch.clear();
+        
+        // Show subtle loading indicator (not blocking the UI)
+        setLoadingBackground(true);
+        
+        // Shutdown any previous executor
+        shutdownExecutor();
+        executorService = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
+        
+        mainScanThread = new Thread(() -> {
+            long start = System.currentTimeMillis();
             List<Uri> directories = settings.getGalleryDirectoriesAsUri(true);
             FragmentActivity activity = getActivity();
             if (activity == null || !isSafe()) {
+                loadingComplete.set(true);
                 return;
             }
+            
             List<Uri> uriFiles = new ArrayList<>(directories.size());
             for (Uri uri : directories) {
                 DocumentFile documentFile = DocumentFile.fromTreeUri(activity, uri);
@@ -126,24 +326,23 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
                 }
             }
 
-            activity.runOnUiThread(this::setLoadingAllWithProgress);
-
+            // Collect top-level items first
             List<GalleryFile> folders = new ArrayList<>();
-            List<GalleryFile> files = new UniqueLinkedList<>();
-            long start = System.currentTimeMillis();
+            List<GalleryFile> topLevelFiles = new ArrayList<>();
             List<GalleryFile> filesToSearch = new ArrayList<>();
+            
             for (Uri uri : uriFiles) {
+                if (!isSafe()) {
+                    loadingComplete.set(true);
+                    return;
+                }
                 List<GalleryFile> filesInFolder = FileStuff.getFilesInFolder(activity, uri, true);
                 for (GalleryFile foundFile : filesInFolder) {
                     if (foundFile.isDirectory()) {
-                        SecureLog.d(TAG, "findAllFiles: found directory");
                         boolean add = true;
                         for (GalleryFile addedFile : filesToSearch) {
                             if (foundFile.getNameWithPath().startsWith(addedFile.getNameWithPath() + "/")) {
-                                // Do not add e.g. folder Pictures/a/b if folder Pictures/a have already been added as it will be searched by a thread in findAllFilesInFolder().
-                                // Prevents showing duplicate files
                                 add = false;
-                                SecureLog.d(TAG, "findAllFiles: not adding nested directory");
                                 break;
                             }
                         }
@@ -155,93 +354,80 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
                     }
                 }
             }
+            
             for (GalleryFile galleryFile : filesToSearch) {
                 if (galleryFile.isDirectory()) {
                     folders.add(galleryFile);
                 } else {
-                    files.add(galleryFile);
+                    topLevelFiles.add(galleryFile);
                 }
             }
 
-            incrementFiles(files.size());
+            // Add top-level files immediately to show something fast
+            if (!topLevelFiles.isEmpty()) {
+                addFilesToUIIncremental(topLevelFiles);
+            }
 
-            activity.runOnUiThread(this::setLoadingAllWithProgress);
-
-            List<Thread> threads = new ArrayList<>();
+            // Process folders in parallel
             for (GalleryFile galleryFile : folders) {
-                if (galleryFile.isDirectory()) {
-                    Thread t = new Thread(() -> {
-                        List<GalleryFile> allFilesInFolder = findAllFilesInFolder(galleryFile.getUri());
-                        synchronized (LOCK) {
-                            files.addAll(allFilesInFolder);
-                        }
-                    });
-                    threads.add(t);
-                    t.start();
-                }
-            }
-            for (Thread t : threads) {
                 if (!isSafe()) {
-                    return;
+                    break;
                 }
-                try {
-                    t.join();
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
+                if (galleryFile.isDirectory()) {
+                    executorService.submit(() -> {
+                        if (!isSafe()) return;
+                        findAllFilesInFolderLazy(galleryFile.getUri());
+                    });
                 }
             }
-            SecureLog.d(TAG, "findAllFiles: joined, found " + SecureLog.safeCount(files.size(), "files") + ", took " + (System.currentTimeMillis() - start) + "ms");
+            
+            // Wait for all folder scans to complete
+            executorService.shutdown();
+            try {
+                if (!executorService.awaitTermination(5, TimeUnit.MINUTES)) {
+                    SecureLog.w(TAG, "findAllFilesLazy: timeout waiting for tasks");
+                    executorService.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                SecureLog.e(TAG, "findAllFilesLazy: interrupted", e);
+                executorService.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+            
+            // Flush any remaining pending files
+            flushPendingBatch();
+            
+            loadingComplete.set(true);
+            SecureLog.d(TAG, "findAllFilesLazy: complete, found " + SecureLog.safeCount(allFilesFound.size(), "files") + ", took " + (System.currentTimeMillis() - start) + "ms");
+            
             if (!isSafe()) {
                 return;
             }
-
-            files.sort(GalleryFile::compareTo);
-
+            
             activity.runOnUiThread(() -> {
-                setLoading(false);
-                if (files.size() > MIN_FILES_FOR_FAST_SCROLL) {
+                setLoadingBackground(false);
+                galleryViewModel.setInitialised(true);
+                if (galleryViewModel.getGalleryFiles().size() > MIN_FILES_FOR_FAST_SCROLL) {
                     binding.recyclerView.setFastScrollEnabled(true);
                 }
-                if (galleryViewModel.isInitialised()) {
-                    return;
-                }
-                galleryViewModel.addGalleryFiles(files);
-                galleryViewModel.setInitialised(true);
-                galleryGridAdapter.notifyItemRangeInserted(0, files.size());
-                galleryPagerAdapter.notifyItemRangeInserted(0, files.size());
             });
-        }).start();
+        });
+        mainScanThread.start();
     }
-
-    private void setLoadingAllWithProgress() {
-        if (!isSafe()) {
-            return;
-        }
-        binding.cLLoading.cLLoading.setVisibility(View.VISIBLE);
-        binding.cLLoading.txtProgress.setText(getString(R.string.gallery_loading_all_progress, foundFiles, foundFolders));
-        binding.cLLoading.txtProgress.setVisibility(View.VISIBLE);
-    }
-
-    private synchronized void incrementFiles(int amount) {
-        foundFiles += amount;
-    }
-
-    private synchronized void incrementFolders(int amount) {
-        foundFolders += amount;
-    }
-
-    @NonNull
-    private List<GalleryFile> findAllFilesInFolder(Uri uri) {
-        SecureLog.d(TAG, "findAllFilesInFolder: scanning folder");
-        List<GalleryFile> files = new UniqueLinkedList<>();
+    
+    /**
+     * Recursively find files in a folder and add them incrementally to UI
+     */
+    private void findAllFilesInFolderLazy(Uri uri) {
         FragmentActivity activity = getActivity();
         if (activity == null || !isSafe()) {
-            return files;
+            return;
         }
+        
         incrementFolders(1);
         List<GalleryFile> filesInFolder = FileStuff.getFilesInFolder(activity, uri, true);
 
-        // Password check logic starts here
+        // Password check using cache
         if (!filesInFolder.isEmpty()) {
             GalleryFile fileToCheck = null;
             for (GalleryFile f : filesInFolder) {
@@ -252,35 +438,187 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
             }
 
             if (fileToCheck != null) {
-                try {
-                    char[] password = Password.getInstance().getPassword();
-                    Encryption.checkPassword(activity, fileToCheck.getUri(), password, fileToCheck.getVersion(), false);
-                } catch (InvalidPasswordException e) {
-                    // Password is wrong for this folder, filter out files
-                    filesInFolder.removeIf(f -> !f.isDirectory());
-                } catch (Exception e) {
-                    SecureLog.e(TAG, "Error checking password for folder", e);
-                    // Treat as wrong password
+                if (!isPasswordValidForFolder(activity, uri, fileToCheck)) {
                     filesInFolder.removeIf(f -> !f.isDirectory());
                 }
             }
         }
-        // Password check logic ends here
 
+        List<GalleryFile> filesFound = new ArrayList<>();
+        List<GalleryFile> subFolders = new ArrayList<>();
+        
         for (GalleryFile galleryFile : filesInFolder) {
             if (!isSafe()) {
-                return files;
+                return;
             }
             if (galleryFile.isDirectory()) {
-                activity.runOnUiThread(this::setLoadingAllWithProgress);
-                files.addAll(findAllFilesInFolder(galleryFile.getUri()));
+                subFolders.add(galleryFile);
             } else {
-                files.add(galleryFile);
+                filesFound.add(galleryFile);
             }
         }
-        incrementFiles(files.size());
-        activity.runOnUiThread(this::setLoadingAllWithProgress);
-        return files;
+        
+        // Add files from this folder to UI
+        if (!filesFound.isEmpty()) {
+            addFilesToUIIncremental(filesFound);
+        }
+        
+        // Update progress
+        activity.runOnUiThread(this::updateLoadingProgress);
+        
+        // Recurse into subfolders
+        for (GalleryFile subFolder : subFolders) {
+            if (!isSafe()) {
+                return;
+            }
+            findAllFilesInFolderLazy(subFolder.getUri());
+        }
+    }
+    
+    /**
+     * Add files to UI incrementally in batches for better performance
+     */
+    @SuppressLint("NotifyDataSetChanged")
+    private void addFilesToUIIncremental(List<GalleryFile> newFiles) {
+        if (newFiles.isEmpty() || !isSafe()) {
+            return;
+        }
+        
+        // Add to master list
+        allFilesFound.addAll(newFiles);
+        incrementFiles(newFiles.size());
+        
+        // Add to pending batch
+        synchronized (pendingBatch) {
+            pendingBatch.addAll(newFiles);
+            
+            // Flush batch if large enough
+            if (pendingBatch.size() >= BATCH_SIZE) {
+                flushPendingBatch();
+            }
+        }
+    }
+    
+    /**
+     * Flush pending batch to UI
+     */
+    @SuppressLint("NotifyDataSetChanged")
+    private void flushPendingBatch() {
+        FragmentActivity activity = getActivity();
+        if (activity == null || !isSafe()) {
+            return;
+        }
+        
+        final List<GalleryFile> batch;
+        synchronized (pendingBatch) {
+            if (pendingBatch.isEmpty()) {
+                return;
+            }
+            batch = new ArrayList<>(pendingBatch);
+            pendingBatch.clear();
+        }
+        
+        activity.runOnUiThread(() -> {
+            if (!isSafe()) {
+                return;
+            }
+            
+            synchronized (LOCK) {
+                int startPos = galleryViewModel.getGalleryFiles().size();
+                
+                // Shuffle the batch for random order
+                Collections.shuffle(batch);
+                
+                galleryViewModel.addGalleryFiles(batch);
+                galleryGridAdapter.notifyItemRangeInserted(startPos, batch.size());
+                galleryPagerAdapter.notifyItemRangeInserted(startPos, batch.size());
+            }
+        });
+    }
+    
+    /**
+     * Show/hide subtle background loading indicator at bottom of screen.
+     * Only shows if the full-screen overlay is not visible.
+     */
+    private void setLoadingBackground(boolean loading) {
+        FragmentActivity activity = getActivity();
+        if (activity == null || !isSafe()) {
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            if (loading) {
+                // Only show bottom indicator if overlay is not showing
+                if (!filterOverlayShowing.get()) {
+                    binding.loadingIndicatorText.setText(R.string.gallery_loading_background);
+                    binding.loadingIndicatorBottom.setVisibility(View.VISIBLE);
+                }
+            } else {
+                binding.loadingIndicatorBottom.setVisibility(View.GONE);
+            }
+        });
+    }
+    
+    /**
+     * Update loading progress text - updates both bottom indicator AND overlay if visible
+     */
+    private void updateLoadingProgress() {
+        if (!isSafe()) {
+            return;
+        }
+        FragmentActivity activity = getActivity();
+        if (activity == null) {
+            return;
+        }
+        final String progressText = getString(R.string.gallery_loading_all_progress, foundFiles.get(), foundFolders.get());
+        activity.runOnUiThread(() -> {
+            // Update bottom indicator
+            binding.loadingIndicatorText.setText(progressText);
+            
+            // Also update full-screen overlay if it's showing
+            if (filterOverlayShowing.get()) {
+                binding.cLLoading.txtProgress.setText(progressText);
+            }
+        });
+    }
+
+    private void incrementFiles(int amount) {
+        foundFiles.addAndGet(amount);
+    }
+
+    private void incrementFolders(int amount) {
+        foundFolders.addAndGet(amount);
+    }
+    
+    /**
+     * Check if password is valid for a folder, using cache to avoid redundant checks.
+     * @param parentUri The parent folder URI to use as cache key
+     * @param fileToCheck The file to check password against
+     * @return true if password is valid, false otherwise
+     */
+    private boolean isPasswordValidForFolder(Context context, Uri parentUri, GalleryFile fileToCheck) {
+        String cacheKey = parentUri.toString();
+        
+        // Check cache first
+        Boolean cachedResult = passwordVerifiedCache.get(cacheKey);
+        if (cachedResult != null) {
+            return cachedResult;
+        }
+        
+        // Not in cache, perform actual check
+        boolean isValid = true;
+        try {
+            char[] password = Password.getInstance().getPassword();
+            Encryption.checkPassword(context, fileToCheck.getUri(), password, fileToCheck.getVersion(), false);
+        } catch (InvalidPasswordException e) {
+            isValid = false;
+        } catch (Exception e) {
+            SecureLog.e(TAG, "Error checking password for folder", e);
+            isValid = false;
+        }
+        
+        // Cache the result
+        passwordVerifiedCache.put(cacheKey, isValid);
+        return isValid;
     }
 
 }
