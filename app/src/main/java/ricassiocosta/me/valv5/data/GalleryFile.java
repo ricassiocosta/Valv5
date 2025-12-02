@@ -579,6 +579,10 @@ public class GalleryFile implements Comparable<GalleryFile> {
 
     @Override
     public int compareTo(GalleryFile o) {
+        // Directories always come first
+        if (this.isDirectory && !o.isDirectory) return -1;
+        if (!this.isDirectory && o.isDirectory) return 1;
+        // Then sort by last modified (newest first)
         return Long.compare(o.lastModified, this.lastModified);
     }
 

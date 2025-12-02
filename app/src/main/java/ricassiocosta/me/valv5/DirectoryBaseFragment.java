@@ -55,6 +55,7 @@ import androidx.recyclerview.widget.SimpleItemAnimator;
 import androidx.recyclerview.widget.StaggeredGridLayoutManager;
 import androidx.viewpager2.widget.ViewPager2;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -525,6 +526,10 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                 List<GalleryFile> galleryFiles = galleryViewModel.getGalleryFiles();
                 if (order == ORDER_BY_NEWEST) {
                     galleryFiles.sort((o1, o2) -> {
+                        // Directories always come first
+                        if (o1.isDirectory() && !o2.isDirectory()) return -1;
+                        if (!o1.isDirectory() && o2.isDirectory()) return 1;
+                        // Then sort by last modified (newest first)
                         if (o1.getLastModified() > o2.getLastModified()) {
                             return -1;
                         } else if (o1.getLastModified() < o2.getLastModified()) {
@@ -534,6 +539,10 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                     });
                 } else if (order == ORDER_BY_OLDEST) {
                     galleryFiles.sort((o1, o2) -> {
+                        // Directories always come first
+                        if (o1.isDirectory() && !o2.isDirectory()) return -1;
+                        if (!o1.isDirectory() && o2.isDirectory()) return 1;
+                        // Then sort by last modified (oldest first)
                         if (o1.getLastModified() > o2.getLastModified()) {
                             return 1;
                         } else if (o1.getLastModified() < o2.getLastModified()) {
@@ -543,6 +552,10 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                     });
                 } else if (order == ORDER_BY_LARGEST) {
                     galleryFiles.sort((o1, o2) -> {
+                        // Directories always come first
+                        if (o1.isDirectory() && !o2.isDirectory()) return -1;
+                        if (!o1.isDirectory() && o2.isDirectory()) return 1;
+                        // Then sort by size (largest first)
                         if (o1.getSize() > o2.getSize()) {
                             return -1;
                         } else if (o1.getSize() < o2.getSize()) {
@@ -552,6 +565,10 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                     });
                 } else if (order == ORDER_BY_SMALLEST) {
                     galleryFiles.sort((o1, o2) -> {
+                        // Directories always come first
+                        if (o1.isDirectory() && !o2.isDirectory()) return -1;
+                        if (!o1.isDirectory() && o2.isDirectory()) return 1;
+                        // Then sort by size (smallest first)
                         if (o1.getSize() > o2.getSize()) {
                             return 1;
                         } else if (o1.getSize() < o2.getSize()) {
@@ -560,7 +577,20 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                         return 0;
                     });
                 } else {
-                    Collections.shuffle(galleryFiles);
+                    // For random order, separate directories and files, shuffle files, then combine
+                    List<GalleryFile> directories = new ArrayList<>();
+                    List<GalleryFile> files = new ArrayList<>();
+                    for (GalleryFile f : galleryFiles) {
+                        if (f.isDirectory()) {
+                            directories.add(f);
+                        } else {
+                            files.add(f);
+                        }
+                    }
+                    Collections.shuffle(files);
+                    galleryFiles.clear();
+                    galleryFiles.addAll(directories);
+                    galleryFiles.addAll(files);
                 }
                 requireActivity().runOnUiThread(() -> {
                     synchronized (LOCK) {
@@ -635,6 +665,13 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                 menuInflater.inflate(R.menu.menu_root, menu);
             } else {
                 menuInflater.inflate(R.menu.menu_dir, menu);
+                // Hide create encrypted folder option when in "All Items" view
+                if (galleryViewModel.isAllFolder()) {
+                    MenuItem createFolderItem = menu.findItem(R.id.create_encrypted_folder);
+                    if (createFolderItem != null) {
+                        createFolderItem.setVisible(false);
+                    }
+                }
             }
         }
     }
