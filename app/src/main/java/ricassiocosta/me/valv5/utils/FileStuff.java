@@ -170,7 +170,7 @@ public class FileStuff {
     }
 
     public static String getFilenameWithPathFromUri(@NonNull Uri uri) {
-        String[] split = uri.getLastPathSegment().split(":");
+        String[] split = uri.getLastPathSegment().split(":", 2);
         return split[split.length - 1];
     }
 
