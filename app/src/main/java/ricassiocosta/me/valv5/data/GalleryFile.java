@@ -413,7 +413,7 @@ public class GalleryFile implements Comparable<GalleryFile> {
         if (mayBeV5CompositeFile()) {
             // For V5 files, consider ready if thumbUri is set,
             // or if the file is a text file or has a note section (which may not require a thumbnail)
-            return thumbUri != null || isText();
+            return thumbUri != null;
         }
         
         // For other files (V1-V4 with separate thumbnail files), always ready
