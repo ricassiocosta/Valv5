@@ -442,9 +442,13 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                     galleryViewModel.setClickedDirectoryUri(galleryFile.getUri());
                     Navigation.findNavController(holder.binding.layout).navigate(R.id.action_directory_self, bundle);
                 } else {
-                    if (onFileCLicked != null) {
-                        onFileCLicked.onClick(pos);
+                    // Only allow opening files that are ready (thumbnail loaded for V5 files)
+                    if (galleryFile.isReadyForViewing()) {
+                        if (onFileCLicked != null) {
+                            onFileCLicked.onClick(pos);
+                        }
                     }
+                    // If not ready, ignore the click - user should wait for thumbnail to load
                 }
             }
         });

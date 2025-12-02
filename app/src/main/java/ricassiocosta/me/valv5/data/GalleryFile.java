@@ -391,6 +391,36 @@ public class GalleryFile implements Comparable<GalleryFile> {
     }
 
     /**
+     * Check if this file is ready for viewing in the gallery viewer.
+     * For V5 composite files, this means the thumbnail has been loaded (metadata extracted).
+     * For directories, text files, and files with pre-existing thumbnails, always returns true.
+     * 
+     * This prevents opening files in the viewer before their metadata is fully loaded,
+     * which could cause crashes or display issues.
+     */
+    public boolean isReadyForViewing() {
+        // Directories and special folders are always ready
+        if (isDirectory || isAllFolder) {
+            return true;
+        }
+        
+        // Text files don't need thumbnail loading
+        if (isText()) {
+            return true;
+        }
+        
+        // If the file might be a V5 composite file, check if thumbnail was loaded
+        if (mayBeV5CompositeFile()) {
+            // For V5 files, consider ready if thumbUri is set,
+            // or if the file is a text file or has a note section (which may not require a thumbnail)
+            return thumbUri != null || isText();
+        }
+        
+        // For other files (V1-V4 with separate thumbnail files), always ready
+        return true;
+    }
+
+    /**
      * V5: Check if this is a V5 composite file with a note section.
      */
     public boolean hasCompositeNote() {
