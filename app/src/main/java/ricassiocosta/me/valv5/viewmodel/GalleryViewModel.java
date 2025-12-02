@@ -50,6 +50,7 @@ public class GalleryViewModel extends ViewModel {
     private boolean isAllFolder = false;
     private IOnAdapterItemChanged onAdapterItemChanged;
     private Uri clickedDirectoryUri;
+    private Uri scrollToFileUri;
 
     public boolean isInitialised() {
         return initialised;
@@ -130,6 +131,14 @@ public class GalleryViewModel extends ViewModel {
 
     public Uri getClickedDirectoryUri() {
         return clickedDirectoryUri;
+    }
+
+    public void setScrollToFileUri(Uri scrollToFileUri) {
+        this.scrollToFileUri = scrollToFileUri;
+    }
+
+    public Uri getScrollToFileUri() {
+        return scrollToFileUri;
     }
 
     public void setCurrentDirectoryUri(Uri currentDirectoryUri) {

@@ -102,6 +102,8 @@
     <string name="gallery_export_selected_files">Export selected</string>
     <string name="gallery_copy_selected_files">Copy to</string>
     <string name="gallery_move_selected_files">Move to</string>
+    <string name="gallery_open_in_folder">Open in folder</string>
+    <string name="gallery_opening_folder">Opening folder…</string>
     <string name="gallery_title">Gallery</string>
     <string name="gallery_file_deleted">File deleted</string>
     <string name="gallery_file_not_deleted">Error, file could not be deleted</string>

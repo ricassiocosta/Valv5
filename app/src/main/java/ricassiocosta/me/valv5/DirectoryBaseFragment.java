@@ -362,6 +362,13 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                     galleryGridAdapter.notifyItemRangeInserted(0, galleryFiles.size());
                     galleryPagerAdapter.notifyItemRangeInserted(0, galleryFiles.size());
                     initFastScroll();
+                    
+                    // Scroll to file if requested
+                    Uri scrollToFileUri = galleryViewModel.getScrollToFileUri();
+                    if (scrollToFileUri != null) {
+                        scrollToFile(scrollToFileUri);
+                        galleryViewModel.setScrollToFileUri(null); // Clear after scrolling
+                    }
                 }
             });
         }).start();
@@ -378,6 +385,8 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         binding.recyclerView.setAdapter(galleryGridAdapter);
         galleryGridAdapter.setOnFileCLicked(pos -> showViewpager(true, pos, true));
         galleryGridAdapter.setOnSelectionModeChanged(this::onSelectionModeChanged);
+        // Invalidate menu when selection count changes (for "Open in folder" visibility)
+        galleryGridAdapter.setOnSelectionCountChanged(() -> requireActivity().invalidateOptionsMenu());
     }
 
     private void initFastScroll() {
@@ -385,6 +394,34 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
             binding.recyclerView.setFastScrollEnabled(galleryViewModel.getGalleryFiles().size() > MIN_FILES_FOR_FAST_SCROLL);
         } else {
             binding.recyclerView.setFastScrollEnabled(false);
+        }
+    }
+
+    /**
+     * Scroll to a specific file in the gallery and highlight it.
+     * @param fileUri The URI of the file to scroll to
+     */
+    void scrollToFile(Uri fileUri) {
+        if (fileUri == null) {
+            return;
+        }
+        List<GalleryFile> galleryFiles = galleryViewModel.getGalleryFiles();
+        for (int i = 0; i < galleryFiles.size(); i++) {
+            GalleryFile file = galleryFiles.get(i);
+            if (!file.isDirectory() && file.getUri() != null && file.getUri().equals(fileUri)) {
+                final int position = i;
+                // Scroll to position with a slight delay to ensure the layout is ready
+                binding.recyclerView.postDelayed(() -> {
+                    binding.recyclerView.scrollToPosition(position);
+                    // Flash highlight effect on the item
+                    RecyclerView.ViewHolder viewHolder = binding.recyclerView.findViewHolderForAdapterPosition(position);
+                    if (viewHolder != null && viewHolder.itemView != null) {
+                        viewHolder.itemView.setAlpha(0.5f);
+                        viewHolder.itemView.animate().alpha(1f).setDuration(500).start();
+                    }
+                }, 300);
+                return;
+            }
         }
     }
 
@@ -534,12 +571,32 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         }).start();
     }
 
+    /**
+     * Check if background loading is in progress.
+     * Override in subclasses that have lazy loading.
+     */
+    protected boolean isLoadingInProgress() {
+        return false;
+    }
+
     @Override
     public void onCreateMenu(@NonNull Menu menu, @NonNull MenuInflater menuInflater) {
         menu.clear();
         if (galleryViewModel.isInSelectionMode()) {
             if (galleryViewModel.isRootDir()) {
                 menuInflater.inflate(R.menu.menu_main_selection_root, menu);
+            } else if (galleryViewModel.isAllFolder()) {
+                menuInflater.inflate(R.menu.menu_main_selection_all, menu);
+                // Only show "Open in folder" when exactly one file is selected
+                MenuItem openInFolderItem = menu.findItem(R.id.open_in_folder);
+                if (openInFolderItem != null) {
+                    openInFolderItem.setVisible(galleryGridAdapter.getSelectedFiles().size() == 1);
+                }
+                // Hide "Select All" while loading is in progress
+                MenuItem selectAllItem = menu.findItem(R.id.select_all);
+                if (selectAllItem != null) {
+                    selectAllItem.setVisible(!isLoadingInProgress());
+                }
             } else {
                 menuInflater.inflate(R.menu.menu_main_selection_dir, menu);
             }
@@ -635,9 +692,54 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         } else if (id == R.id.about) {
             Dialogs.showAboutDialog(requireContext());
             return true;
+        } else if (id == R.id.open_in_folder) {
+            openSelectedFileInFolder();
+            return true;
         }
 
         return false;
+    }
+
+    /**
+     * Open the selected file in its parent folder.
+     * Only works when exactly one file is selected in the "All" view.
+     */
+    private void openSelectedFileInFolder() {
+        List<GalleryFile> selectedFiles = galleryGridAdapter.getSelectedFiles();
+        if (selectedFiles.size() != 1) {
+            return;
+        }
+        
+        GalleryFile selectedFile = selectedFiles.get(0);
+        Uri fileUri = selectedFile.getUri();
+        if (fileUri == null) {
+            return;
+        }
+        
+        // Get parent folder URI from file URI
+        Uri parentFolderUri = FileStuff.getParentFolderUri(fileUri);
+        if (parentFolderUri == null) {
+            return;
+        }
+        
+        // Get nested path for the parent folder
+        String nestedPath = FileStuff.getNestedPathFromUri(fileUri);
+        
+        // Show loading toast
+        Toaster.getInstance(requireContext()).showShort(getString(R.string.gallery_opening_folder));
+        
+        // Exit selection mode
+        galleryGridAdapter.onSelectionModeChanged(false);
+        
+        // Navigate to the parent folder with scroll-to-file argument
+        Bundle bundle = new Bundle();
+        bundle.putString(DirectoryFragment.ARGUMENT_DIRECTORY, parentFolderUri.toString());
+        if (nestedPath != null && !nestedPath.isEmpty()) {
+            bundle.putString(DirectoryFragment.ARGUMENT_NESTED_PATH, nestedPath);
+        }
+        bundle.putString(DirectoryFragment.ARGUMENT_SCROLL_TO_FILE, fileUri.toString());
+        
+        navController.navigate(R.id.action_directory_all_to_directory, bundle);
     }
 
     @Override

@@ -24,6 +24,10 @@
                 android:name="nestedPath"
                 app:argType="string"
                 app:nullable="true" />
+            <argument
+                android:name="scrollToFile"
+                app:argType="string"
+                app:nullable="true" />
         </action>
         <action
             android:id="@+id/action_directory_to_directory_all"
@@ -38,6 +42,22 @@
         <action
             android:id="@+id/action_directory_to_settings"
             app:destination="@id/settings" />
+        <action
+            android:id="@+id/action_directory_all_to_directory"
+            app:destination="@id/directory">
+            <argument
+                android:name="directory"
+                app:argType="string"
+                app:nullable="false" />
+            <argument
+                android:name="nestedPath"
+                app:argType="string"
+                app:nullable="true" />
+            <argument
+                android:name="scrollToFile"
+                app:argType="string"
+                app:nullable="true" />
+        </action>
     </fragment>
 
     <fragment
