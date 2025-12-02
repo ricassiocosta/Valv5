@@ -145,9 +145,21 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
 
     @Override
     public long getItemId(int position) {
-        // Use the GalleryFile's hashCode as a stable ID
+        // Use the GalleryFile's URI string hashCode as a stable ID (less likely to collide)
         if (position >= 0 && position < galleryFiles.size()) {
-            return galleryFiles.get(position).hashCode();
+            GalleryFile file = galleryFiles.get(position);
+            // Prefer a unique identifier, e.g., URI string
+            Uri uri = file.getUri();
+            if (uri != null) {
+                return uri.toString().hashCode();
+            }
+            // Fallback: use nameWithPath if available
+            String nameWithPath = file.getNameWithPath();
+            if (nameWithPath != null) {
+                return nameWithPath.hashCode();
+            }
+            // As a last resort, use hashCode (not recommended)
+            return file.hashCode();
         }
         return RecyclerView.NO_ID;
     }
