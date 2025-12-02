@@ -83,6 +83,9 @@ import ricassiocosta.me.valv5.viewmodel.PasswordViewModel;
 public abstract class DirectoryBaseFragment extends Fragment implements MenuProvider {
     private static final String TAG = "DirectoryBaseFragment";
 
+    // Animation timing constants
+    private static final int HIGHLIGHT_ANIMATION_DURATION_MS = 500;
+
     static final Object LOCK = new Object();
     static final int MIN_FILES_FOR_FAST_SCROLL = 60;
     static final int ORDER_BY_NEWEST = 0;
@@ -411,18 +414,24 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         List<GalleryFile> galleryFiles = galleryViewModel.getGalleryFiles();
         for (int i = 0; i < galleryFiles.size(); i++) {
             GalleryFile file = galleryFiles.get(i);
-            if (!file.isDirectory() && file.getUri() != null && file.getUri().equals(fileUri)) {
+            Uri uri = file.getUri();
+            if (!file.isDirectory() && uri != null && uri.equals(fileUri)) {
                 final int position = i;
-                // Scroll to position with a slight delay to ensure the layout is ready
-                binding.recyclerView.postDelayed(() -> {
-                    binding.recyclerView.scrollToPosition(position);
-                    // Flash highlight effect on the item
-                    RecyclerView.ViewHolder viewHolder = binding.recyclerView.findViewHolderForAdapterPosition(position);
-                    if (viewHolder != null && viewHolder.itemView != null) {
-                        viewHolder.itemView.setAlpha(0.5f);
-                        viewHolder.itemView.animate().alpha(1f).setDuration(500).start();
+                // Use layout change listener to ensure the layout is ready before scrolling
+                binding.recyclerView.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+                    @Override
+                    public void onLayoutChange(View v, int left, int top, int right, int bottom,
+                                              int oldLeft, int oldTop, int oldRight, int oldBottom) {
+                        binding.recyclerView.removeOnLayoutChangeListener(this);
+                        binding.recyclerView.scrollToPosition(position);
+                        // Fade-in highlight effect on the item
+                        RecyclerView.ViewHolder viewHolder = binding.recyclerView.findViewHolderForAdapterPosition(position);
+                        if (viewHolder != null && viewHolder.itemView != null) {
+                            viewHolder.itemView.setAlpha(0.5f);
+                            viewHolder.itemView.animate().alpha(1f).setDuration(HIGHLIGHT_ANIMATION_DURATION_MS).start();
+                        }
                     }
-                }, 300);
+                });
                 return;
             }
         }
