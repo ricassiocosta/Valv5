@@ -18,6 +18,9 @@
 
 package ricassiocosta.me.valv5.utils;
 
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+
 import androidx.annotation.NonNull;
 
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
@@ -27,6 +30,9 @@ import com.bumptech.glide.signature.ObjectKey;
 import ricassiocosta.me.valv5.security.EphemeralSessionKey;
 
 public class GlideStuff {
+    
+    // Placeholder drawable to prevent flickering during image load
+    private static final ColorDrawable PLACEHOLDER = new ColorDrawable(Color.TRANSPARENT);
 
     /**
      * Request options for viewing images - no disk cache for security.
@@ -40,9 +46,9 @@ public class GlideStuff {
     }
 
     /**
-     * Request options for grid thumbnails - skips both disk and memory cache.
-     * Thumbnails will be reloaded when scrolling back, but this prevents OOM with large galleries
-     * and ensures no decrypted data is written to disk.
+     * Request options for grid thumbnails - uses memory cache but skips disk cache.
+     * Memory cache is safe because it's cleared when the app locks.
+     * Placeholder prevents flickering during scroll.
      * Uses ephemeral session key for additional security.
      */
     @NonNull
@@ -50,7 +56,8 @@ public class GlideStuff {
         return new RequestOptions()
                 .diskCacheStrategy(DiskCacheStrategy.NONE)
                 .signature(new ObjectKey(EphemeralSessionKey.getInstance().getSessionId()))
-                .skipMemoryCache(true);
+                .placeholder(PLACEHOLDER)
+                .skipMemoryCache(false);  // Allow memory cache for smoother scrolling
     }
 
 }

@@ -118,11 +118,13 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
         return simpleDateFormat.format(new Date(galleryFiles.get(position).getLastModified()));
     }
 
-    record Payload(int type) {
-        static final int TYPE_SELECT_ALL = 0;
-        static final int TYPE_TOGGLE_FILENAME = 1;
-        static final int TYPE_NEW_FILENAME = 2;
-        static final int TYPE_LOADED_NOTE = 3;
+    public record Payload(int type) {
+        public static final int TYPE_SELECT_ALL = 0;
+        public static final int TYPE_TOGGLE_FILENAME = 1;
+        public static final int TYPE_NEW_FILENAME = 2;
+        public static final int TYPE_LOADED_NOTE = 3;
+        public static final int TYPE_DIRECTORY_LOADED = 4;
+        public static final int TYPE_TEXT_LOADED = 5;
     }
 
     public GalleryGridAdapter(FragmentActivity context, @NonNull List<GalleryFile> galleryFiles, boolean showFileNames, boolean isRootDir, GalleryViewModel galleryViewModel) {
@@ -134,8 +136,20 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
         this.isRootDir = isRootDir;
         password = Password.getInstance();
         
+        // Enable stable IDs for better RecyclerView performance and to prevent flickering
+        setHasStableIds(true);
+        
         // Note: metadataCache is NOT registered with SecureMemoryManager
         // It only contains non-sensitive metadata (URIs, file types), not decrypted content
+    }
+
+    @Override
+    public long getItemId(int position) {
+        // Use the GalleryFile's hashCode as a stable ID
+        if (position >= 0 && position < galleryFiles.size()) {
+            return galleryFiles.get(position).hashCode();
+        }
+        return RecyclerView.NO_ID;
     }
 
     public void setNestedPath(String nestedPath) {
@@ -175,7 +189,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
 
         updateSelectedView(holder, galleryFile);
         holder.binding.txtName.setVisibility(showFileNames || galleryFile.isDirectory() ? View.VISIBLE : View.GONE);
-        holder.binding.imageView.setImageDrawable(null);
+        // Don't clear imageView here - let Glide handle the transition to prevent flickering
         
         boolean isWebpFile = galleryFile.getOriginalName() != null && galleryFile.getOriginalName().toLowerCase().endsWith(".webp");
         if (!isRootDir && (galleryFile.isGif() || galleryFile.isVideo() || galleryFile.isDirectory() || galleryFile.isText() || (galleryFile.isImage() && isWebpFile))) {
@@ -216,7 +230,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                     currentContext.runOnUiThread(() -> {
                         int bindingAdapterPosition = holder.getBindingAdapterPosition();
                         if (bindingAdapterPosition != RecyclerView.NO_POSITION) {
-                            galleryViewModel.getOnAdapterItemChanged().onChanged(bindingAdapterPosition);
+                            galleryViewModel.getOnAdapterItemChanged().onChanged(bindingAdapterPosition, Payload.TYPE_DIRECTORY_LOADED);
                         }
                     });
                 }
@@ -336,7 +350,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                 currentContext.runOnUiThread(() -> {
                     int pos = galleryFiles.indexOf(galleryFile);
                     if (pos >= 0) {
-                        galleryViewModel.getOnAdapterItemChanged().onChanged(pos);
+                        galleryViewModel.getOnAdapterItemChanged().onChanged(pos, Payload.TYPE_TEXT_LOADED);
                     }
                 });
             }
@@ -472,6 +486,11 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                         holder.binding.imgType.setVisibility(View.GONE);
                     }
                     found = true;
+                } else if (payload.type == Payload.TYPE_DIRECTORY_LOADED || payload.type == Payload.TYPE_TEXT_LOADED) {
+                    // These need full rebind to update thumbnail/text content
+                    // Let it fall through to super.onBindViewHolder
+                    found = false;
+                    break;
                 }
             }
         }

@@ -23,6 +23,7 @@ import com.google.android.material.snackbar.Snackbar;
 import java.util.ArrayList;
 import java.util.List;
 
+import ricassiocosta.me.valv5.adapters.GalleryGridAdapter;
 import ricassiocosta.me.valv5.data.GalleryFile;
 import ricassiocosta.me.valv5.data.Password;
 import ricassiocosta.me.valv5.interfaces.IOnDirectoryAdded;
@@ -120,9 +121,25 @@ public class DirectoryFragment extends DirectoryBaseFragment {
             galleryViewModel.setRootDir(true);
         }
 
-        galleryViewModel.setOnAdapterItemChanged(pos -> {
-            galleryPagerAdapter.notifyItemChanged(pos);
-            galleryGridAdapter.notifyItemChanged(pos);
+        galleryViewModel.setOnAdapterItemChanged(new ricassiocosta.me.valv5.interfaces.IOnAdapterItemChanged() {
+            @Override
+            public void onChanged(int pos) {
+                // Default: use payloads to prevent full rebind and avoid flickering
+                galleryPagerAdapter.notifyItemChanged(pos, Boolean.FALSE);
+                galleryGridAdapter.notifyItemChanged(pos, new GalleryGridAdapter.Payload(GalleryGridAdapter.Payload.TYPE_NEW_FILENAME));
+            }
+            
+            @Override
+            public void onChanged(int pos, int payloadType) {
+                galleryPagerAdapter.notifyItemChanged(pos, Boolean.FALSE);
+                if (payloadType == GalleryGridAdapter.Payload.TYPE_DIRECTORY_LOADED || 
+                    payloadType == GalleryGridAdapter.Payload.TYPE_TEXT_LOADED) {
+                    // These need full rebind to update thumbnail/text content
+                    galleryGridAdapter.notifyItemChanged(pos);
+                } else {
+                    galleryGridAdapter.notifyItemChanged(pos, new GalleryGridAdapter.Payload(payloadType));
+                }
+            }
         });
 
         if (galleryViewModel.isRootDir()) {
