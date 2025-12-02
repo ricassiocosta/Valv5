@@ -2085,11 +2085,23 @@ public class MySubsamplingScaleImageView extends View {
     }
 
     /**
-     * Security: Ensure bitmap data is securely cleared when view is detached.
+     * Note: We intentionally do NOT call recycle() in onDetachedFromWindow().
+     * 
+     * In a ViewPager2/RecyclerView context, views are frequently detached and reattached
+     * as the user scrolls between pages. Calling recycle() here would destroy the image
+     * data, causing a black screen when the user scrolls back to a previously viewed image.
+     * 
+     * Instead, we rely on:
+     * 1. The RecyclerView.Adapter's onViewRecycled() callback to call recycle() when
+     *    the ViewHolder is actually being recycled for reuse with different data
+     * 2. The Activity/Fragment lifecycle to perform cleanup when the screen is destroyed
+     * 
+     * The secure memory wiping still happens through recycle() -> reset() when the
+     * adapter calls recycle(), maintaining security while preserving functionality.
      */
     @Override
     protected void onDetachedFromWindow() {
-        recycle();
+        // Don't call recycle() here - let the adapter manage the lifecycle
         super.onDetachedFromWindow();
     }
 
