@@ -143,22 +143,47 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
         // It only contains non-sensitive metadata (URIs, file types), not decrypted content
     }
 
+    /**
+     * Generate a stable long ID from a string using improved hash distribution.
+     * Combines hashCode with string length to reduce collision probability.
+     * 
+     * The algorithm works by:
+     * 1. Converting the 32-bit hashCode to unsigned long to avoid sign extension issues
+     * 2. Using the hash value in the upper 32 bits for primary uniqueness
+     * 3. XORing the hash with string length in the lower 32 bits to differentiate
+     *    strings that might have colliding hashCodes but different lengths
+     * 
+     * This provides better distribution across the full 64-bit long range than
+     * using hashCode() alone, which only uses 32 bits.
+     */
+    private long generateStableId(String str) {
+        if (str == null) {
+            return 0;
+        }
+        // Mask to avoid sign extension when int is promoted to long
+        long hash = str.hashCode() & 0xFFFFFFFFL;
+        // Use full 64-bit range: upper 32 bits from hashCode, lower 32 bits from length XOR hash
+        return (hash << 32) | ((hash ^ str.length()) & 0xFFFFFFFFL);
+    }
+
     @Override
     public long getItemId(int position) {
-        // Use the GalleryFile's URI string hashCode as a stable ID (less likely to collide)
+        // Use the GalleryFile's URI as a stable ID with improved collision resistance
         if (position >= 0 && position < galleryFiles.size()) {
             GalleryFile file = galleryFiles.get(position);
             // Prefer a unique identifier, e.g., URI string
             Uri uri = file.getUri();
             if (uri != null) {
-                return uri.toString().hashCode();
+                return generateStableId(uri.toString());
             }
             // Fallback: use nameWithPath if available
             String nameWithPath = file.getNameWithPath();
             if (nameWithPath != null) {
-                return nameWithPath.hashCode();
+                return generateStableId(nameWithPath);
             }
-            // As a last resort, use hashCode (not recommended)
+            // Last resort: use object hashCode (may cause collisions if different
+            // GalleryFile objects have the same hashCode, leading to incorrect
+            // view recycling in RecyclerView)
             return file.hashCode();
         }
         return RecyclerView.NO_ID;
