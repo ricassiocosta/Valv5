@@ -86,6 +86,7 @@ import ricassiocosta.me.valv5.encryption.Encryption;
 import ricassiocosta.me.valv5.encryption.MyDataSourceFactory;
 import ricassiocosta.me.valv5.exception.InvalidPasswordException;
 import ricassiocosta.me.valv5.interfaces.IOnFileDeleted;
+import ricassiocosta.me.valv5.interfaces.IOnGoToFolder;
 import ricassiocosta.me.valv5.subsampling.ImageSource;
 import ricassiocosta.me.valv5.subsampling.MySubsamplingScaleImageView;
 import ricassiocosta.me.valv5.utils.Dialogs;
@@ -111,6 +112,7 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
     private final Map<Integer, ExoPlayer> players;
     private final Password password;
     private boolean isFullscreen;
+    private IOnGoToFolder onGoToFolder;
 
     private final View.OnAttachStateChangeListener onAttachStateChangeListener = new View.OnAttachStateChangeListener() {
         @Override
@@ -134,6 +136,14 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
         this.nestedPath = nestedPath;
         this.players = new HashMap<>();
         this.password = Password.getInstance();
+    }
+
+    /**
+     * Set callback for "Go to folder" action.
+     * Only used when viewing from "All items" view.
+     */
+    public void setOnGoToFolder(IOnGoToFolder onGoToFolder) {
+        this.onGoToFolder = onGoToFolder;
     }
 
     @NonNull
@@ -554,6 +564,10 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
                 loadShareOrOpen(context, galleryFile, true);
             } else if (id == R.id.edit_text) {
                 showEditFile(context, galleryFile, holder);
+            } else if (id == R.id.go_to_folder) {
+                if (onGoToFolder != null) {
+                    onGoToFolder.onGoToFolder(galleryFile);
+                }
             }
             return true;
         });
@@ -561,6 +575,9 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
         menu.getItem(2).setEnabled(!isAllFolder);
         menu.getItem(3).setVisible(!isAllFolder && galleryFile.isText()); // hide edit text in All folder and for non-text files
         menu.getItem(3).setEnabled(!isAllFolder && galleryFile.isText());
+        // Show "Go to folder" only in All folder view
+        menu.getItem(4).setVisible(isAllFolder);
+        menu.getItem(4).setEnabled(isAllFolder);
 
         popup.show();
     }

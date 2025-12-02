@@ -442,6 +442,12 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     void setupViewpager() {
         galleryPagerAdapter = new GalleryPagerAdapter(requireActivity(), galleryViewModel.getGalleryFiles(), pos -> galleryGridAdapter.notifyItemRemoved(pos), galleryViewModel.getCurrentDocumentDirectory(),
                 galleryViewModel.isAllFolder(), galleryViewModel.getNestedPath(), galleryViewModel);
+        
+        // Set "Go to folder" callback for "All items" view
+        if (galleryViewModel.isAllFolder()) {
+            galleryPagerAdapter.setOnGoToFolder(this::goToFolderFromViewpager);
+        }
+        
         binding.viewPager.setAdapter(galleryPagerAdapter);
         binding.viewPager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
             @Override
@@ -742,6 +748,49 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         
         // Exit selection mode
         galleryGridAdapter.onSelectionModeChanged(false);
+        
+        // Store scroll-to-file URI in shared ViewModel (avoids Bundle serialization)
+        navigationViewModel.setPendingScrollToFileUri(fileUri);
+        
+        // Navigate to the parent folder
+        Bundle bundle = new Bundle();
+        bundle.putString(DirectoryFragment.ARGUMENT_DIRECTORY, parentFolderUri.toString());
+        if (nestedPath != null && !nestedPath.isEmpty()) {
+            bundle.putString(DirectoryFragment.ARGUMENT_NESTED_PATH, nestedPath);
+        }
+        
+        navController.navigate(R.id.action_directory_all_to_directory, bundle);
+    }
+
+    /**
+     * Navigate to the folder containing a file from the viewpager.
+     * Called from the "Go to folder" menu option in the viewpager.
+     * @param galleryFile The file whose parent folder should be opened
+     */
+    private void goToFolderFromViewpager(GalleryFile galleryFile) {
+        if (galleryFile == null) {
+            return;
+        }
+        
+        Uri fileUri = galleryFile.getUri();
+        if (fileUri == null) {
+            return;
+        }
+        
+        // Get parent folder URI from file URI
+        Uri parentFolderUri = FileStuff.getParentFolderUri(fileUri);
+        if (parentFolderUri == null) {
+            return;
+        }
+        
+        // Get nested path for the parent folder
+        String nestedPath = FileStuff.getNestedPathFromUri(fileUri);
+        
+        // Show loading toast
+        Toaster.getInstance(requireContext()).showShort(getString(R.string.gallery_opening_folder));
+        
+        // Close viewpager
+        showViewpager(false, galleryViewModel.getCurrentPosition(), false);
         
         // Store scroll-to-file URI in shared ViewModel (avoids Bundle serialization)
         navigationViewModel.setPendingScrollToFileUri(fileUri);
