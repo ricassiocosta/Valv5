@@ -193,7 +193,7 @@ public class FileStuff {
             // Document ID format: "primary:path/to/folder/file"
             // We need to get "primary:path/to/folder"
             int lastSlash = documentId.lastIndexOf('/');
-            if (lastSlash <= 0) {
+            if (lastSlash < 0) {
                 // File is at root level, return the tree URI
                 String treeId = DocumentsContract.getTreeDocumentId(fileUri);
                 if (treeId != null) {
@@ -233,7 +233,7 @@ public class FileStuff {
             
             // First, get the parent folder path
             int lastSlash = documentId.lastIndexOf('/');
-            if (lastSlash <= 0) {
+            if (lastSlash < 0) {
                 return "";
             }
             

@@ -19,6 +19,7 @@ package ricassiocosta.me.valv5.viewmodel;
 
 import android.net.Uri;
 
+import androidx.annotation.MainThread;
 import androidx.lifecycle.ViewModel;
 
 /**
@@ -39,6 +40,7 @@ public class NavigationViewModel extends ViewModel {
      * Set the URI of a file to scroll to after navigation.
      * This should be consumed (cleared) after use.
      */
+    @MainThread
     public void setPendingScrollToFileUri(Uri uri) {
         this.pendingScrollToFileUri = uri;
     }
@@ -47,6 +49,7 @@ public class NavigationViewModel extends ViewModel {
      * Get and clear the pending scroll-to-file URI.
      * Returns null if no pending scroll is set.
      */
+    @MainThread
     public Uri consumePendingScrollToFileUri() {
         Uri uri = this.pendingScrollToFileUri;
         this.pendingScrollToFileUri = null;
@@ -56,6 +59,7 @@ public class NavigationViewModel extends ViewModel {
     /**
      * Check if there's a pending scroll-to-file request.
      */
+    @MainThread
     public boolean hasPendingScrollToFile() {
         return pendingScrollToFileUri != null;
     }
