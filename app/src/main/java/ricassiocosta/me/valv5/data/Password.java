@@ -40,10 +40,9 @@ public class Password {
     }
 
     public void setPassword(char[] password) {
-        // Register the new password with SecureMemoryManager for cleanup
-        if (password != null) {
-            SecureMemoryManager.getInstance().register(password);
-        }
+        // Note: We do NOT register the password with SecureMemoryManager here
+        // because the password must persist during the entire session.
+        // The password is securely wiped in clear() when the vault is locked.
         this.password = password;
     }
 

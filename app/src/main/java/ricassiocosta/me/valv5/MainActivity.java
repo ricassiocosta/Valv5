@@ -12,6 +12,8 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
 
+import com.bumptech.glide.Glide;
+
 import ricassiocosta.me.valv5.security.SecureLog;
 
 
@@ -154,14 +156,22 @@ public class MainActivity extends AppCompatActivity {
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
         
-        // When system is low on memory or app goes to background, clean sensitive data
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
-            SecureMemoryManager.getInstance().wipeAll();
-        }
+        // Note: TRIM_MEMORY_UI_HIDDEN is called when app goes to background
+        // We should NOT wipe sensitive data here as the user may return quickly.
+        // The autolock feature (checkBackgroundLockTimeout) handles locking after timeout.
         
-        // If system is critically low on memory, perform full cleanup
+        // Only perform cleanup when system is critically low on memory
         if (level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE) {
+            SecureLog.d(TAG, "Critical memory pressure, performing full cleanup");
             SecureMemoryManager.getInstance().performFullCleanup(this);
+        } else if (level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
+            // Moderate memory pressure - clear only non-essential caches
+            SecureLog.d(TAG, "Moderate memory pressure, clearing Glide cache only");
+            try {
+                Glide.get(this).clearMemory();
+            } catch (Exception e) {
+                SecureLog.w(TAG, "Failed to clear Glide memory cache", e);
+            }
         }
     }
 
