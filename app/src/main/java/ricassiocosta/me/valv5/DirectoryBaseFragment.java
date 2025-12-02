@@ -395,7 +395,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         
         // Increase view cache for smoother scrolling
         binding.recyclerView.setItemViewCacheSize(20);
-        binding.recyclerView.setHasFixedSize(false);
+        binding.recyclerView.setHasFixedSize(true);
         
         galleryGridAdapter = new GalleryGridAdapter(requireActivity(), galleryViewModel.getGalleryFiles(), settings.showFilenames(), galleryViewModel.isRootDir(), galleryViewModel);
         galleryGridAdapter.setNestedPath(galleryViewModel.getNestedPath());
