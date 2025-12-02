@@ -17,6 +17,18 @@
 
 package ricassiocosta.me.valv5.interfaces;
 
+import ricassiocosta.me.valv5.adapters.GalleryGridAdapter;
+
 public interface IOnAdapterItemChanged {
     void onChanged(int pos);
+    
+    /**
+     * Called when an item has changed with a specific payload type.
+     * @param pos The position of the changed item
+     * @param payloadType The type of change (from GalleryGridAdapter.Payload)
+     */
+    default void onChanged(int pos, int payloadType) {
+        // Default implementation calls the simple version for backwards compatibility
+        onChanged(pos);
+    }
 }

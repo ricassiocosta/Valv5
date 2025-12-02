@@ -118,11 +118,13 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
         return simpleDateFormat.format(new Date(galleryFiles.get(position).getLastModified()));
     }
 
-    record Payload(int type) {
-        static final int TYPE_SELECT_ALL = 0;
-        static final int TYPE_TOGGLE_FILENAME = 1;
-        static final int TYPE_NEW_FILENAME = 2;
-        static final int TYPE_LOADED_NOTE = 3;
+    public record Payload(int type) {
+        public static final int TYPE_SELECT_ALL = 0;
+        public static final int TYPE_TOGGLE_FILENAME = 1;
+        public static final int TYPE_NEW_FILENAME = 2;
+        public static final int TYPE_LOADED_NOTE = 3;
+        public static final int TYPE_DIRECTORY_LOADED = 4;
+        public static final int TYPE_TEXT_LOADED = 5;
     }
 
     public GalleryGridAdapter(FragmentActivity context, @NonNull List<GalleryFile> galleryFiles, boolean showFileNames, boolean isRootDir, GalleryViewModel galleryViewModel) {
@@ -134,8 +136,57 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
         this.isRootDir = isRootDir;
         password = Password.getInstance();
         
+        // Enable stable IDs for better RecyclerView performance and to prevent flickering
+        setHasStableIds(true);
+        
         // Note: metadataCache is NOT registered with SecureMemoryManager
         // It only contains non-sensitive metadata (URIs, file types), not decrypted content
+    }
+
+    /**
+     * Generate a stable long ID from a string using improved hash distribution.
+     * Combines hashCode with string length to reduce collision probability.
+     * 
+     * The algorithm works by:
+     * 1. Converting the 32-bit hashCode to unsigned long to avoid sign extension issues
+     * 2. Using the hash value in the upper 32 bits for primary uniqueness
+     * 3. XORing the hash with string length in the lower 32 bits to differentiate
+     *    strings that might have colliding hashCodes but different lengths
+     * 
+     * This provides better distribution across the full 64-bit long range than
+     * using hashCode() alone, which only uses 32 bits.
+     */
+    private long generateStableId(String str) {
+        if (str == null) {
+            return 0;
+        }
+        // Mask to avoid sign extension when int is promoted to long
+        long hash = str.hashCode() & 0xFFFFFFFFL;
+        // Use full 64-bit range: upper 32 bits from hashCode, lower 32 bits from length XOR hash
+        return (hash << 32) | ((hash ^ str.length()) & 0xFFFFFFFFL);
+    }
+
+    @Override
+    public long getItemId(int position) {
+        // Use the GalleryFile's URI as a stable ID with improved collision resistance
+        if (position >= 0 && position < galleryFiles.size()) {
+            GalleryFile file = galleryFiles.get(position);
+            // Prefer a unique identifier, e.g., URI string
+            Uri uri = file.getUri();
+            if (uri != null) {
+                return generateStableId(uri.toString());
+            }
+            // Fallback: use nameWithPath if available
+            String nameWithPath = file.getNameWithPath();
+            if (nameWithPath != null) {
+                return generateStableId(nameWithPath);
+            }
+            // Last resort: use object hashCode (may cause collisions if different
+            // GalleryFile objects have the same hashCode, leading to incorrect
+            // view recycling in RecyclerView)
+            return file.hashCode();
+        }
+        return RecyclerView.NO_ID;
     }
 
     public void setNestedPath(String nestedPath) {
@@ -175,7 +226,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
 
         updateSelectedView(holder, galleryFile);
         holder.binding.txtName.setVisibility(showFileNames || galleryFile.isDirectory() ? View.VISIBLE : View.GONE);
-        holder.binding.imageView.setImageDrawable(null);
+        // Don't clear imageView here - let Glide handle the transition to prevent flickering
         
         boolean isWebpFile = galleryFile.getOriginalName() != null && galleryFile.getOriginalName().toLowerCase().endsWith(".webp");
         if (!isRootDir && (galleryFile.isGif() || galleryFile.isVideo() || galleryFile.isDirectory() || galleryFile.isText() || (galleryFile.isImage() && isWebpFile))) {
@@ -216,7 +267,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                     currentContext.runOnUiThread(() -> {
                         int bindingAdapterPosition = holder.getBindingAdapterPosition();
                         if (bindingAdapterPosition != RecyclerView.NO_POSITION) {
-                            galleryViewModel.getOnAdapterItemChanged().onChanged(bindingAdapterPosition);
+                            galleryViewModel.getOnAdapterItemChanged().onChanged(bindingAdapterPosition, Payload.TYPE_DIRECTORY_LOADED);
                         }
                     });
                 }
@@ -336,7 +387,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                 currentContext.runOnUiThread(() -> {
                     int pos = galleryFiles.indexOf(galleryFile);
                     if (pos >= 0) {
-                        galleryViewModel.getOnAdapterItemChanged().onChanged(pos);
+                        galleryViewModel.getOnAdapterItemChanged().onChanged(pos, Payload.TYPE_TEXT_LOADED);
                     }
                 });
             }
@@ -472,6 +523,11 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                         holder.binding.imgType.setVisibility(View.GONE);
                     }
                     found = true;
+                } else if (payload.type == Payload.TYPE_DIRECTORY_LOADED || payload.type == Payload.TYPE_TEXT_LOADED) {
+                    // These need full rebind to update thumbnail/text content
+                    // Let it fall through to super.onBindViewHolder
+                    found = false;
+                    break;
                 }
             }
         }
