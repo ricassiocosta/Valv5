@@ -77,10 +77,14 @@ import ricassiocosta.me.valv5.viewmodel.ExportViewModel;
 import ricassiocosta.me.valv5.viewmodel.GalleryViewModel;
 import ricassiocosta.me.valv5.viewmodel.ImportViewModel;
 import ricassiocosta.me.valv5.viewmodel.MoveViewModel;
+import ricassiocosta.me.valv5.viewmodel.NavigationViewModel;
 import ricassiocosta.me.valv5.viewmodel.PasswordViewModel;
 
 public abstract class DirectoryBaseFragment extends Fragment implements MenuProvider {
     private static final String TAG = "DirectoryBaseFragment";
+
+    // Animation timing constants
+    private static final int HIGHLIGHT_ANIMATION_DURATION_MS = 500;
 
     static final Object LOCK = new Object();
     static final int MIN_FILES_FOR_FAST_SCROLL = 60;
@@ -102,6 +106,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     ExportViewModel exportViewModel;
     CopyViewModel copyViewModel;
     MoveViewModel moveViewModel;
+    NavigationViewModel navigationViewModel;
 
     GalleryGridAdapter galleryGridAdapter;
     GalleryPagerAdapter galleryPagerAdapter;
@@ -142,6 +147,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         super.onViewCreated(view, savedInstanceState);
 
         passwordViewModel = new ViewModelProvider(requireActivity()).get(PasswordViewModel.class);
+        navigationViewModel = new ViewModelProvider(requireActivity()).get(NavigationViewModel.class);
         galleryViewModel = new ViewModelProvider(this).get(GalleryViewModel.class);
         importViewModel = new ViewModelProvider(this).get(ImportViewModel.class);
         deleteViewModel = new ViewModelProvider(this).get(DeleteViewModel.class);
@@ -362,6 +368,13 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                     galleryGridAdapter.notifyItemRangeInserted(0, galleryFiles.size());
                     galleryPagerAdapter.notifyItemRangeInserted(0, galleryFiles.size());
                     initFastScroll();
+                    
+                    // Scroll to file if requested
+                    Uri scrollToFileUri = galleryViewModel.getScrollToFileUri();
+                    if (scrollToFileUri != null) {
+                        scrollToFile(scrollToFileUri);
+                        galleryViewModel.setScrollToFileUri(null); // Clear after scrolling
+                    }
                 }
             });
         }).start();
@@ -378,6 +391,8 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         binding.recyclerView.setAdapter(galleryGridAdapter);
         galleryGridAdapter.setOnFileCLicked(pos -> showViewpager(true, pos, true));
         galleryGridAdapter.setOnSelectionModeChanged(this::onSelectionModeChanged);
+        // Invalidate menu when selection count changes (for "Open in folder" visibility)
+        galleryGridAdapter.setOnSelectionCountChanged(() -> requireActivity().invalidateOptionsMenu());
     }
 
     private void initFastScroll() {
@@ -388,11 +403,51 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         }
     }
 
+    /**
+     * Scroll to a specific file in the gallery and highlight it.
+     * @param fileUri The URI of the file to scroll to
+     */
+    void scrollToFile(Uri fileUri) {
+        if (fileUri == null) {
+            return;
+        }
+        List<GalleryFile> galleryFiles = galleryViewModel.getGalleryFiles();
+        for (int i = 0; i < galleryFiles.size(); i++) {
+            GalleryFile file = galleryFiles.get(i);
+            Uri uri = file.getUri();
+            if (!file.isDirectory() && uri != null && uri.equals(fileUri)) {
+                final int position = i;
+                // Use layout change listener to ensure the layout is ready before scrolling
+                binding.recyclerView.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+                    @Override
+                    public void onLayoutChange(View v, int left, int top, int right, int bottom,
+                                              int oldLeft, int oldTop, int oldRight, int oldBottom) {
+                        binding.recyclerView.removeOnLayoutChangeListener(this);
+                        binding.recyclerView.scrollToPosition(position);
+                        // Fade-in highlight effect on the item
+                        RecyclerView.ViewHolder viewHolder = binding.recyclerView.findViewHolderForAdapterPosition(position);
+                        if (viewHolder != null && viewHolder.itemView != null) {
+                            viewHolder.itemView.setAlpha(0.5f);
+                            viewHolder.itemView.animate().alpha(1f).setDuration(HIGHLIGHT_ANIMATION_DURATION_MS).start();
+                        }
+                    }
+                });
+                return;
+            }
+        }
+    }
+
     abstract void onSelectionModeChanged(boolean inSelectionMode);
 
     void setupViewpager() {
         galleryPagerAdapter = new GalleryPagerAdapter(requireActivity(), galleryViewModel.getGalleryFiles(), pos -> galleryGridAdapter.notifyItemRemoved(pos), galleryViewModel.getCurrentDocumentDirectory(),
                 galleryViewModel.isAllFolder(), galleryViewModel.getNestedPath(), galleryViewModel);
+        
+        // Set "Go to folder" callback for "All items" view
+        if (galleryViewModel.isAllFolder()) {
+            galleryPagerAdapter.setOnGoToFolder(this::goToFolderFromViewpager);
+        }
+        
         binding.viewPager.setAdapter(galleryPagerAdapter);
         binding.viewPager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
             @Override
@@ -534,12 +589,32 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         }).start();
     }
 
+    /**
+     * Check if background loading is in progress.
+     * Override in subclasses that have lazy loading.
+     */
+    protected boolean isLoadingInProgress() {
+        return false;
+    }
+
     @Override
     public void onCreateMenu(@NonNull Menu menu, @NonNull MenuInflater menuInflater) {
         menu.clear();
         if (galleryViewModel.isInSelectionMode()) {
             if (galleryViewModel.isRootDir()) {
                 menuInflater.inflate(R.menu.menu_main_selection_root, menu);
+            } else if (galleryViewModel.isAllFolder()) {
+                menuInflater.inflate(R.menu.menu_main_selection_all, menu);
+                // Only show "Open in folder" when exactly one file is selected
+                MenuItem openInFolderItem = menu.findItem(R.id.open_in_folder);
+                if (openInFolderItem != null) {
+                    openInFolderItem.setVisible(galleryGridAdapter.getSelectedFiles().size() == 1);
+                }
+                // Hide "Select All" while loading is in progress
+                MenuItem selectAllItem = menu.findItem(R.id.select_all);
+                if (selectAllItem != null) {
+                    selectAllItem.setVisible(!isLoadingInProgress());
+                }
             } else {
                 menuInflater.inflate(R.menu.menu_main_selection_dir, menu);
             }
@@ -635,9 +710,78 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         } else if (id == R.id.about) {
             Dialogs.showAboutDialog(requireContext());
             return true;
+        } else if (id == R.id.open_in_folder) {
+            openSelectedFileInFolder();
+            return true;
         }
 
         return false;
+    }
+
+    /**
+     * Navigate to the parent folder of a file.
+     * Common logic used by both selection mode and viewpager navigation.
+     * @param fileUri The URI of the file whose parent folder should be opened
+     */
+    private void navigateToParentFolder(Uri fileUri) {
+        Uri parentFolderUri = FileStuff.getParentFolderUri(fileUri);
+        if (parentFolderUri == null) {
+            return;
+        }
+        
+        String nestedPath = FileStuff.getNestedPathFromUri(fileUri);
+        Toaster.getInstance(requireContext()).showShort(getString(R.string.gallery_opening_folder));
+        navigationViewModel.setPendingScrollToFileUri(fileUri);
+        
+        Bundle bundle = new Bundle();
+        bundle.putString(DirectoryFragment.ARGUMENT_DIRECTORY, parentFolderUri.toString());
+        if (nestedPath != null && !nestedPath.isEmpty()) {
+            bundle.putString(DirectoryFragment.ARGUMENT_NESTED_PATH, nestedPath);
+        }
+        navController.navigate(R.id.action_directory_all_to_directory, bundle);
+    }
+
+    /**
+     * Open the selected file in its parent folder.
+     * Only works when exactly one file is selected in the "All" view.
+     */
+    private void openSelectedFileInFolder() {
+        List<GalleryFile> selectedFiles = galleryGridAdapter.getSelectedFiles();
+        if (selectedFiles.size() != 1) {
+            return;
+        }
+        
+        GalleryFile selectedFile = selectedFiles.get(0);
+        Uri fileUri = selectedFile.getUri();
+        if (fileUri == null) {
+            return;
+        }
+        
+        // Exit selection mode
+        galleryGridAdapter.onSelectionModeChanged(false);
+        
+        navigateToParentFolder(fileUri);
+    }
+
+    /**
+     * Navigate to the folder containing a file from the viewpager.
+     * Called from the "Go to folder" menu option in the viewpager.
+     * @param galleryFile The file whose parent folder should be opened
+     */
+    private void goToFolderFromViewpager(GalleryFile galleryFile) {
+        if (galleryFile == null) {
+            return;
+        }
+        
+        Uri fileUri = galleryFile.getUri();
+        if (fileUri == null) {
+            return;
+        }
+        
+        // Close viewpager
+        showViewpager(false, galleryViewModel.getCurrentPosition(), false);
+        
+        navigateToParentFolder(fileUri);
     }
 
     @Override

@@ -101,6 +101,13 @@ public class DirectoryFragment extends DirectoryBaseFragment {
             galleryViewModel.setNestedPath(arguments.getString(ARGUMENT_NESTED_PATH, ""));
             galleryViewModel.setDirectory(arguments.getString(ARGUMENT_DIRECTORY), context);
         }
+        
+        // Check for pending scroll-to-file from NavigationViewModel (shared across fragments)
+        Uri pendingScrollUri = navigationViewModel.consumePendingScrollToFileUri();
+        if (pendingScrollUri != null) {
+            galleryViewModel.setScrollToFileUri(pendingScrollUri);
+        }
+        
         galleryViewModel.setAllFolder(false);
         SecureLog.d(TAG, "init: directory: " + SecureLog.redactPath(galleryViewModel.getDirectory()));
         SecureLog.d(TAG, "init: nested path: " + SecureLog.redactPath(galleryViewModel.getNestedPath()));

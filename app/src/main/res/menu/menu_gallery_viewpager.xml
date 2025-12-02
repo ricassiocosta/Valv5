@@ -12,4 +12,7 @@
     <item
         android:id="@+id/edit_text"
         android:title="@string/edit_text" />
+    <item
+        android:id="@+id/go_to_folder"
+        android:title="@string/gallery_open_in_folder" />
 </menu>

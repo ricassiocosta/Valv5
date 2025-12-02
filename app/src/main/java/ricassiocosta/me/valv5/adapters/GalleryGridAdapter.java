@@ -110,6 +110,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
     private IOnFileDeleted onFileDeleted;
     private IOnFileClicked onFileCLicked;
     private IOnSelectionModeChanged onSelectionModeChanged;
+    private Runnable onSelectionCountChanged;
 
     @NonNull
     @Override
@@ -151,6 +152,10 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
 
     public void setOnSelectionModeChanged(IOnSelectionModeChanged onSelectionModeChanged) {
         this.onSelectionModeChanged = onSelectionModeChanged;
+    }
+
+    public void setOnSelectionCountChanged(Runnable onSelectionCountChanged) {
+        this.onSelectionCountChanged = onSelectionCountChanged;
     }
 
     @NonNull
@@ -366,6 +371,10 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                         lastSelectedPos = -1;
                     }
                     updateSelectedView(holder, galleryFile);
+                    // Notify that selection count changed
+                    if (onSelectionCountChanged != null) {
+                        onSelectionCountChanged.run();
+                    }
                 }
             } else {
                 if (galleryFile.isDirectory()) {
@@ -406,6 +415,10 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                                 }
                             }
                             notifyItemRangeChanged(minPos, 1 + (maxPos - minPos), new Payload(Payload.TYPE_SELECT_ALL));
+                            // Notify that selection count changed
+                            if (onSelectionCountChanged != null) {
+                                onSelectionCountChanged.run();
+                            }
                         }
                     } else {
                         holder.binding.layout.performClick();
@@ -533,6 +546,10 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                 }
             }
             notifyItemRangeChanged(0, galleryFiles.size(), new Payload(Payload.TYPE_SELECT_ALL));
+            // Notify that selection count changed
+            if (onSelectionCountChanged != null) {
+                onSelectionCountChanged.run();
+            }
         }
     }
 

@@ -174,7 +174,8 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
     /**
      * Check if background loading is still in progress
      */
-    public boolean isLoadingInProgress() {
+    @Override
+    protected boolean isLoadingInProgress() {
         return !loadingComplete.get();
     }
     

@@ -170,8 +170,104 @@ public class FileStuff {
     }
 
     public static String getFilenameWithPathFromUri(@NonNull Uri uri) {
-        String[] split = uri.getLastPathSegment().split(":");
+        String[] split = uri.getLastPathSegment().split(":", 2);
         return split[split.length - 1];
+    }
+
+    /**
+     * Get the parent folder URI from a file URI.
+     * For example, if the file URI is content://com.android.externalstorage.documents/tree/primary%3AValv/document/primary%3AValv%2Ffolder%2Ffile.enc
+     * this returns the parent folder URI: content://com.android.externalstorage.documents/tree/primary%3AValv/document/primary%3AValv%2Ffolder
+     * 
+     * @param fileUri The file URI
+     * @return The parent folder URI, or null if it cannot be determined
+     */
+    @Nullable
+    public static Uri getParentFolderUri(@NonNull Uri fileUri) {
+        try {
+            String documentId = DocumentsContract.getDocumentId(fileUri);
+            if (documentId == null) {
+                return null;
+            }
+            
+            // Document ID format: "primary:path/to/folder/file"
+            // We need to get "primary:path/to/folder"
+            int lastSlash = documentId.lastIndexOf('/');
+            if (lastSlash < 0) {
+                // File is at root level, return the tree URI
+                String treeId = DocumentsContract.getTreeDocumentId(fileUri);
+                if (treeId != null) {
+                    return DocumentsContract.buildDocumentUriUsingTree(fileUri, treeId);
+                }
+                return null;
+            }
+            
+            String parentDocumentId = documentId.substring(0, lastSlash);
+            return DocumentsContract.buildDocumentUriUsingTree(fileUri, parentDocumentId);
+        } catch (Exception e) {
+            SecureLog.e(TAG, "Error getting parent folder URI", e);
+            return null;
+        }
+    }
+
+    /**
+     * Get the nested path from a file URI.
+     * This extracts the path after the tree root.
+     * 
+     * @param fileUri The file URI
+     * @return The nested path, or empty string if at root
+     */
+    @NonNull
+    public static String getNestedPathFromUri(@NonNull Uri fileUri) {
+        try {
+            String documentId = DocumentsContract.getDocumentId(fileUri);
+            String treeId = DocumentsContract.getTreeDocumentId(fileUri);
+            
+            if (documentId == null || treeId == null) {
+                return "";
+            }
+            
+            // Document ID format: "primary:path/to/folder/file"
+            // Tree ID format: "primary:Valv"
+            // We need the path between tree root and the parent folder
+            
+            // First, get the parent folder path
+            int lastSlash = documentId.lastIndexOf('/');
+            if (lastSlash < 0) {
+                return "";
+            }
+            
+            String parentPath = documentId.substring(0, lastSlash);
+            
+            // Find where the tree path ends
+            // The tree ID contains the root, like "primary:Valv"
+            // The document ID contains the full path, like "primary:Valv/subfolder/file"
+            String[] treeParts = treeId.split(":", 2);
+            String[] parentParts = parentPath.split(":", 2);
+            
+            if (treeParts.length < 2 || parentParts.length < 2) {
+                return "";
+            }
+            
+            String treePath = treeParts[1]; // e.g., "Valv"
+            String fullParentPath = parentParts[1]; // e.g., "Valv/subfolder"
+            
+            if (fullParentPath.equals(treePath)) {
+                return "";
+            }
+            
+            if (fullParentPath.startsWith(treePath + "/")) {
+                // Get the relative path after the tree root
+                String relativePath = fullParentPath.substring(treePath.length());
+                // relativePath now starts with /, like "/subfolder"
+                return relativePath;
+            }
+            
+            return "";
+        } catch (Exception e) {
+            SecureLog.e(TAG, "Error getting nested path from URI", e);
+            return "";
+        }
     }
 
     public static String getFilenameFromUri(@NonNull Uri uri, boolean withoutPrefix) {
