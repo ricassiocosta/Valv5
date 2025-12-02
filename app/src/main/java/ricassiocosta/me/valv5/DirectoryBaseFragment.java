@@ -77,6 +77,7 @@ import ricassiocosta.me.valv5.viewmodel.ExportViewModel;
 import ricassiocosta.me.valv5.viewmodel.GalleryViewModel;
 import ricassiocosta.me.valv5.viewmodel.ImportViewModel;
 import ricassiocosta.me.valv5.viewmodel.MoveViewModel;
+import ricassiocosta.me.valv5.viewmodel.NavigationViewModel;
 import ricassiocosta.me.valv5.viewmodel.PasswordViewModel;
 
 public abstract class DirectoryBaseFragment extends Fragment implements MenuProvider {
@@ -102,6 +103,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     ExportViewModel exportViewModel;
     CopyViewModel copyViewModel;
     MoveViewModel moveViewModel;
+    NavigationViewModel navigationViewModel;
 
     GalleryGridAdapter galleryGridAdapter;
     GalleryPagerAdapter galleryPagerAdapter;
@@ -142,6 +144,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         super.onViewCreated(view, savedInstanceState);
 
         passwordViewModel = new ViewModelProvider(requireActivity()).get(PasswordViewModel.class);
+        navigationViewModel = new ViewModelProvider(requireActivity()).get(NavigationViewModel.class);
         galleryViewModel = new ViewModelProvider(this).get(GalleryViewModel.class);
         importViewModel = new ViewModelProvider(this).get(ImportViewModel.class);
         deleteViewModel = new ViewModelProvider(this).get(DeleteViewModel.class);
@@ -731,13 +734,15 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         // Exit selection mode
         galleryGridAdapter.onSelectionModeChanged(false);
         
-        // Navigate to the parent folder with scroll-to-file argument
+        // Store scroll-to-file URI in shared ViewModel (avoids Bundle serialization)
+        navigationViewModel.setPendingScrollToFileUri(fileUri);
+        
+        // Navigate to the parent folder
         Bundle bundle = new Bundle();
         bundle.putString(DirectoryFragment.ARGUMENT_DIRECTORY, parentFolderUri.toString());
         if (nestedPath != null && !nestedPath.isEmpty()) {
             bundle.putString(DirectoryFragment.ARGUMENT_NESTED_PATH, nestedPath);
         }
-        bundle.putString(DirectoryFragment.ARGUMENT_SCROLL_TO_FILE, fileUri.toString());
         
         navController.navigate(R.id.action_directory_all_to_directory, bundle);
     }

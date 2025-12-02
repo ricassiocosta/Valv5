@@ -37,7 +37,6 @@ public class DirectoryFragment extends DirectoryBaseFragment {
 
     public static final String ARGUMENT_DIRECTORY = "directory";
     public static final String ARGUMENT_NESTED_PATH = "nestedPath";
-    public static final String ARGUMENT_SCROLL_TO_FILE = "scrollToFile";
 
     private Snackbar snackBarBackPressed;
     private ShareViewModel shareViewModel;
@@ -101,11 +100,14 @@ public class DirectoryFragment extends DirectoryBaseFragment {
         if (arguments != null) {
             galleryViewModel.setNestedPath(arguments.getString(ARGUMENT_NESTED_PATH, ""));
             galleryViewModel.setDirectory(arguments.getString(ARGUMENT_DIRECTORY), context);
-            String scrollToFile = arguments.getString(ARGUMENT_SCROLL_TO_FILE);
-            if (scrollToFile != null) {
-                galleryViewModel.setScrollToFileUri(Uri.parse(scrollToFile));
-            }
         }
+        
+        // Check for pending scroll-to-file from NavigationViewModel (shared across fragments)
+        Uri pendingScrollUri = navigationViewModel.consumePendingScrollToFileUri();
+        if (pendingScrollUri != null) {
+            galleryViewModel.setScrollToFileUri(pendingScrollUri);
+        }
+        
         galleryViewModel.setAllFolder(false);
         SecureLog.d(TAG, "init: directory: " + SecureLog.redactPath(galleryViewModel.getDirectory()));
         SecureLog.d(TAG, "init: nested path: " + SecureLog.redactPath(galleryViewModel.getNestedPath()));
