@@ -170,7 +170,7 @@ public class FileStuff {
     }
 
     public static String getFilenameWithPathFromUri(@NonNull Uri uri) {
-        String[] split = uri.getLastPathSegment().split(":");
+        String[] split = uri.getLastPathSegment().split(":", 2);
         return split[split.length - 1];
     }
 
@@ -242,8 +242,8 @@ public class FileStuff {
             // Find where the tree path ends
             // The tree ID contains the root, like "primary:Valv"
             // The document ID contains the full path, like "primary:Valv/subfolder/file"
-            String[] treeParts = treeId.split(":");
-            String[] parentParts = parentPath.split(":");
+            String[] treeParts = treeId.split(":", 2);
+            String[] parentParts = parentPath.split(":", 2);
             
             if (treeParts.length < 2 || parentParts.length < 2) {
                 return "";
