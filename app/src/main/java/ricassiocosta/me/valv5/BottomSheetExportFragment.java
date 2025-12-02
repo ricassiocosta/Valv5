@@ -66,7 +66,7 @@ public class BottomSheetExportFragment extends BottomSheetDialogFragment {
         exportViewModel.setTotalBytes(bytes);
 
         binding.title.setText(getResources().getQuantityString(R.plurals.export_modal_title, filesToExport.size(), filesToExport.size(), StringStuff.bytesToReadableString(bytes)));
-        binding.body.setText(getString(R.string.export_modal_body, FileStuff.getFilenameWithPathFromUri(exportViewModel.getCurrentDocumentDirectory().getUri())));
+        binding.body.setText(getString(R.string.export_modal_body, FileStuff.getDisplayPathFromUri(exportViewModel.getCurrentDocumentDirectory().getUri())));
         exportViewModel.setOnDoneBottomSheet(deletedFiles -> {
             clearViewModel();
             dismiss();

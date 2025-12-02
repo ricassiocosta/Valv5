@@ -342,7 +342,7 @@ public class DirectoryFragment extends DirectoryBaseFragment {
         settings.addGalleryDirectory(documentFile.getUri(), asRootDir, new IOnDirectoryAdded() {
             @Override
             public void onAddedAsRoot() {
-                Toaster.getInstance(context).showLong(getString(R.string.gallery_added_folder, FileStuff.getFilenameWithPathFromUri(uri)));
+                Toaster.getInstance(context).showLong(getString(R.string.gallery_added_folder, FileStuff.getDisplayPathFromUri(uri)));
                 Uri directoryUri = documentFile.getUri();
                 //List<GalleryFile> galleryFiles = FileStuff.getFilesInFolder(context, directoryUri);
 
@@ -357,12 +357,12 @@ public class DirectoryFragment extends DirectoryBaseFragment {
 
             @Override
             public void onAdded() {
-                Toaster.getInstance(context).showLong(getString(R.string.gallery_added_folder, FileStuff.getFilenameWithPathFromUri(uri)));
+                Toaster.getInstance(context).showLong(getString(R.string.gallery_added_folder, FileStuff.getDisplayPathFromUri(uri)));
             }
 
             @Override
             public void onAlreadyExists() {
-                Toaster.getInstance(context).showLong(getString(R.string.gallery_added_folder, FileStuff.getFilenameWithPathFromUri(uri)));
+                Toaster.getInstance(context).showLong(getString(R.string.gallery_added_folder, FileStuff.getDisplayPathFromUri(uri)));
                 if (asRootDir) {
                     addRootFolders();
                 }

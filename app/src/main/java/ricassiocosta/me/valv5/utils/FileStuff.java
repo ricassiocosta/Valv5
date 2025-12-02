@@ -49,6 +49,7 @@ import ricassiocosta.me.valv5.data.CursorFile;
 import ricassiocosta.me.valv5.data.GalleryFile;
 import ricassiocosta.me.valv5.data.Password;
 import ricassiocosta.me.valv5.encryption.Encryption;
+import ricassiocosta.me.valv5.encryption.FolderNameCache;
 import ricassiocosta.me.valv5.exception.InvalidPasswordException;
 import ricassiocosta.me.valv5.security.SecureLog;
 
@@ -284,6 +285,91 @@ public class FileStuff {
             }
         }
         return s;
+    }
+
+    /**
+     * Get the display name for a folder URI.
+     * If it's an encrypted folder, returns the decrypted name.
+     * Otherwise, returns the original folder name.
+     * 
+     * @param uri The folder URI
+     * @return The display name (decrypted if encrypted folder, or original name)
+     */
+    @NonNull
+    public static String getDisplayNameFromUri(@NonNull Uri uri) {
+        String folderName = getFilenameFromUri(uri, false);
+        return tryGetDecryptedFolderName(folderName);
+    }
+
+    /**
+     * Get the display path for a folder URI.
+     * Decrypts any encrypted folder names in the path.
+     * 
+     * @param uri The folder URI
+     * @return The display path with decrypted folder names
+     */
+    @NonNull
+    public static String getDisplayPathFromUri(@NonNull Uri uri) {
+        String path = getFilenameWithPathFromUri(uri);
+        return decryptPathFolderNames(path);
+    }
+
+    /**
+     * Try to decrypt a folder name if it looks like an encrypted folder.
+     * Returns the original name if decryption fails or it's not encrypted.
+     * 
+     * @param folderName The folder name to try to decrypt
+     * @return The decrypted name or the original name
+     */
+    @NonNull
+    public static String tryGetDecryptedFolderName(@NonNull String folderName) {
+        // Quick check - is it even a candidate for encrypted folder?
+        if (!Encryption.looksLikeEncryptedFolder(folderName)) {
+            return folderName;
+        }
+        
+        // Check cache first
+        FolderNameCache cache = FolderNameCache.getInstance();
+        String cachedName = cache.get(folderName);
+        if (cachedName != null) {
+            return cachedName;
+        }
+        
+        // Get password from current session
+        Password passwordInstance = Password.getInstance();
+        char[] password = passwordInstance.getPassword();
+        if (password == null) {
+            return folderName;
+        }
+        
+        // Try to decrypt
+        String decryptedName = Encryption.decryptFolderName(folderName, password);
+        if (decryptedName != null) {
+            cache.put(folderName, decryptedName);
+            return decryptedName;
+        }
+        
+        // Decryption failed - return original name
+        return folderName;
+    }
+
+    /**
+     * Decrypt encrypted folder names within a path.
+     * 
+     * @param path The path potentially containing encrypted folder names
+     * @return The path with decrypted folder names
+     */
+    @NonNull
+    private static String decryptPathFolderNames(@NonNull String path) {
+        String[] parts = path.split("/");
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) {
+                result.append("/");
+            }
+            result.append(tryGetDecryptedFolderName(parts[i]));
+        }
+        return result.toString();
     }
 
     public static String getNameWithoutPrefix(@NonNull String encryptedName) {

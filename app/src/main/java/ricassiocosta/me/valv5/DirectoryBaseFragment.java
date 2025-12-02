@@ -200,7 +200,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
 
         if (ab != null) {
             ab.setDisplayHomeAsUpEnabled(true);
-            ab.setTitle(isAllFolder ? getString(R.string.gallery_all) : FileStuff.getFilenameFromUri(galleryViewModel.getCurrentDirectoryUri(), false));
+            ab.setTitle(isAllFolder ? getString(R.string.gallery_all) : FileStuff.getDisplayNameFromUri(galleryViewModel.getCurrentDirectoryUri()));
             return true;
         }
         return false;

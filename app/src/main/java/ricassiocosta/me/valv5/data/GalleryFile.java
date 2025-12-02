@@ -263,7 +263,7 @@ public class GalleryFile implements Comparable<GalleryFile> {
             return decryptedFolderName;
         }
         if (nameWithPath == null) {
-            nameWithPath = FileStuff.getFilenameWithPathFromUri(fileUri);
+            nameWithPath = FileStuff.getDisplayPathFromUri(fileUri);
         }
         return nameWithPath;
     }

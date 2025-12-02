@@ -68,7 +68,7 @@ public class BottomSheetMoveFragment extends BottomSheetDialogFragment {
             DocumentFile pickedDirectory = DocumentFile.fromTreeUri(context, uri);
             if (pickedDirectory != null) {
                 context.getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                doCopy(uri, FileStuff.getFilenameWithPathFromUri(uri), pickedDirectory);
+                doCopy(uri, FileStuff.getDisplayPathFromUri(uri), pickedDirectory);
             }
         }
     });
@@ -101,7 +101,7 @@ public class BottomSheetMoveFragment extends BottomSheetDialogFragment {
         List<String> names = new ArrayList<>(directories.size() + 1);
 
         for (int i = 0; i < directories.size(); i++) {
-            names.add(FileStuff.getFilenameWithPathFromUri(directories.get(i)));
+            names.add(FileStuff.getDisplayPathFromUri(directories.get(i)));
         }
 
         setupRecyclerView(names, context, directories, settings);

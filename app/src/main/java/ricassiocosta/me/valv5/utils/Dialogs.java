@@ -116,7 +116,7 @@ public class Dialogs {
         List<Uri> directories = settings.getGalleryDirectoriesAsUri(false);
         String[] names = new String[directories.size()];
         for (int i = 0; i < names.length; i++) {
-            names[i] = FileStuff.getFilenameWithPathFromUri(directories.get(i));
+            names[i] = FileStuff.getDisplayPathFromUri(directories.get(i));
         }
 
         new MaterialAlertDialogBuilder(context)
@@ -249,7 +249,7 @@ public class Dialogs {
         List<Uri> directories = settings.getGalleryDirectoriesAsUri(false);
         String[] names = new String[directories.size()];
         for (int i = 0; i < names.length; i++) {
-            names[i] = FileStuff.getFilenameWithPathFromUri(directories.get(i));
+            names[i] = FileStuff.getDisplayPathFromUri(directories.get(i));
         }
         List<Uri> selectedToRemove = new LinkedList<>();
         new MaterialAlertDialogBuilder(context)
