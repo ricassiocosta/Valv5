@@ -719,6 +719,29 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     }
 
     /**
+     * Navigate to the parent folder of a file.
+     * Common logic used by both selection mode and viewpager navigation.
+     * @param fileUri The URI of the file whose parent folder should be opened
+     */
+    private void navigateToParentFolder(Uri fileUri) {
+        Uri parentFolderUri = FileStuff.getParentFolderUri(fileUri);
+        if (parentFolderUri == null) {
+            return;
+        }
+        
+        String nestedPath = FileStuff.getNestedPathFromUri(fileUri);
+        Toaster.getInstance(requireContext()).showShort(getString(R.string.gallery_opening_folder));
+        navigationViewModel.setPendingScrollToFileUri(fileUri);
+        
+        Bundle bundle = new Bundle();
+        bundle.putString(DirectoryFragment.ARGUMENT_DIRECTORY, parentFolderUri.toString());
+        if (nestedPath != null && !nestedPath.isEmpty()) {
+            bundle.putString(DirectoryFragment.ARGUMENT_NESTED_PATH, nestedPath);
+        }
+        navController.navigate(R.id.action_directory_all_to_directory, bundle);
+    }
+
+    /**
      * Open the selected file in its parent folder.
      * Only works when exactly one file is selected in the "All" view.
      */
@@ -734,32 +757,10 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
             return;
         }
         
-        // Get parent folder URI from file URI
-        Uri parentFolderUri = FileStuff.getParentFolderUri(fileUri);
-        if (parentFolderUri == null) {
-            return;
-        }
-        
-        // Get nested path for the parent folder
-        String nestedPath = FileStuff.getNestedPathFromUri(fileUri);
-        
-        // Show loading toast
-        Toaster.getInstance(requireContext()).showShort(getString(R.string.gallery_opening_folder));
-        
         // Exit selection mode
         galleryGridAdapter.onSelectionModeChanged(false);
         
-        // Store scroll-to-file URI in shared ViewModel (avoids Bundle serialization)
-        navigationViewModel.setPendingScrollToFileUri(fileUri);
-        
-        // Navigate to the parent folder
-        Bundle bundle = new Bundle();
-        bundle.putString(DirectoryFragment.ARGUMENT_DIRECTORY, parentFolderUri.toString());
-        if (nestedPath != null && !nestedPath.isEmpty()) {
-            bundle.putString(DirectoryFragment.ARGUMENT_NESTED_PATH, nestedPath);
-        }
-        
-        navController.navigate(R.id.action_directory_all_to_directory, bundle);
+        navigateToParentFolder(fileUri);
     }
 
     /**
@@ -777,32 +778,10 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
             return;
         }
         
-        // Get parent folder URI from file URI
-        Uri parentFolderUri = FileStuff.getParentFolderUri(fileUri);
-        if (parentFolderUri == null) {
-            return;
-        }
-        
-        // Get nested path for the parent folder
-        String nestedPath = FileStuff.getNestedPathFromUri(fileUri);
-        
-        // Show loading toast
-        Toaster.getInstance(requireContext()).showShort(getString(R.string.gallery_opening_folder));
-        
         // Close viewpager
         showViewpager(false, galleryViewModel.getCurrentPosition(), false);
         
-        // Store scroll-to-file URI in shared ViewModel (avoids Bundle serialization)
-        navigationViewModel.setPendingScrollToFileUri(fileUri);
-        
-        // Navigate to the parent folder
-        Bundle bundle = new Bundle();
-        bundle.putString(DirectoryFragment.ARGUMENT_DIRECTORY, parentFolderUri.toString());
-        if (nestedPath != null && !nestedPath.isEmpty()) {
-            bundle.putString(DirectoryFragment.ARGUMENT_NESTED_PATH, nestedPath);
-        }
-        
-        navController.navigate(R.id.action_directory_all_to_directory, bundle);
+        navigateToParentFolder(fileUri);
     }
 
     @Override
