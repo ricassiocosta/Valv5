@@ -1992,6 +1992,10 @@ public class Encryption {
      */
     @Nullable
     public static String createEncryptedFolderName(@NonNull String originalName, @NonNull char[] password) {
+        if (password == null || password.length == 0) {
+            return null;
+        }
+
         if (originalName.length() > MAX_FOLDER_NAME_LENGTH) {
             throw new IllegalArgumentException("Folder name exceeds maximum length of " + MAX_FOLDER_NAME_LENGTH);
         }
@@ -2135,7 +2139,7 @@ public class Encryption {
         // Encrypted folder names are base64url encoded
         // Minimum length: (16 + 12 + 16 + 1) bytes = 45 bytes -> ~60 chars in base64
         // They should only contain base64url characters: A-Z, a-z, 0-9, -, _
-        if (folderName.length() < 60) {
+        if (folderName.length() < 59) {
             return false;
         }
         
