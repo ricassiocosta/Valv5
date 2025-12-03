@@ -122,7 +122,7 @@ public class FileStuff {
             if (file.isDirectory()) {
                 GalleryFile dir = GalleryFile.asDirectory(file);
                 // Try to decrypt folder name if it looks like an encrypted folder
-                tryDecryptFolderName(dir);
+                tryDecryptFolderNameForGalleryFile(dir);
                 galleryFiles.add(dir);
                 continue;
             }

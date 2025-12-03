@@ -2056,6 +2056,8 @@ public class Encryption {
     
     /**
      * Decrypt an encrypted folder name.
+     * Note: This method does not use caching. Callers should use 
+     * FileStuff.tryGetDecryptedFolderName() which handles caching.
      * 
      * @param encryptedName The base64url-encoded encrypted folder name
      * @param password The user's password
@@ -2063,13 +2065,6 @@ public class Encryption {
      */
     @Nullable
     public static String decryptFolderName(@NonNull String encryptedName, @NonNull char[] password) {
-        // Check cache first
-        FolderNameCache cache = FolderNameCache.getInstance();
-        String cached = cache.get(encryptedName);
-        if (cached != null) {
-            return cached;
-        }
-        
         try {
             // Decode base64url
             byte[] combined = android.util.Base64.decode(encryptedName, 
@@ -2103,9 +2098,6 @@ public class Encryption {
                 
                 byte[] plaintext = cipher.doFinal(ciphertext);
                 String originalName = new String(plaintext, StandardCharsets.UTF_8);
-                
-                // Cache the result
-                cache.put(encryptedName, originalName);
                 
                 // Clear sensitive data
                 Arrays.fill(plaintext, (byte) 0);
