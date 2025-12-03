@@ -543,7 +543,7 @@ public class FileStuff {
      * 
      * @param folder The GalleryFile representing the folder
      */
-    private static void tryDecryptFolderName(@NonNull GalleryFile folder) {
+    private static void tryDecryptFolderNameForGalleryFile(@NonNull GalleryFile folder) {
         if (!folder.isDirectory()) {
             return;
         }
