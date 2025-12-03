@@ -583,7 +583,18 @@ public class GalleryFile implements Comparable<GalleryFile> {
         if (this.isDirectory && !o.isDirectory) return -1;
         if (!this.isDirectory && o.isDirectory) return 1;
         // Then sort by last modified (newest first)
-        return Long.compare(o.lastModified, this.lastModified);
+        int cmp = Long.compare(o.lastModified, this.lastModified);
+        if (cmp != 0) return cmp;
+        // If lastModified is equal, sort by name (encryptedName)
+        if (this.encryptedName != null && o.encryptedName != null) {
+            return this.encryptedName.compareToIgnoreCase(o.encryptedName);
+        } else if (this.encryptedName != null) {
+            return -1;
+        } else if (o.encryptedName != null) {
+            return 1;
+        } else {
+            return 0;
+        }
     }
 
     @Override
