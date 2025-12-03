@@ -367,7 +367,12 @@ public class FileStuff {
             if (i > 0) {
                 result.append("/");
             }
-            result.append(tryGetDecryptedFolderName(parts[i]));
+            String part = parts[i];
+            if (Encryption.looksLikeEncryptedFolder(part)) {
+                result.append(tryGetDecryptedFolderName(part));
+            } else {
+                result.append(part);
+            }
         }
         return result.toString();
     }
