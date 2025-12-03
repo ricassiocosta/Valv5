@@ -40,9 +40,12 @@ public class Password {
     }
 
     public void setPassword(char[] password) {
-        // Note: We do NOT register the password with SecureMemoryManager here
-        // because the password must persist during the entire session.
-        // The password is securely wiped in clear() when the vault is locked.
+        // Note: The password is intentionally NOT registered with SecureMemoryManager here
+        // because it must persist during the entire session for folder decryption and file operations.
+        // Security trade-off: The password remains in memory while the app is backgrounded.
+        // However, it is securely wiped in clear() when the vault is explicitly locked.
+        // If stronger security is needed (wipe on background), consider implementing a
+        // "persistent buffer" mechanism in SecureMemoryManager that excludes from partial cleanup.
         this.password = password;
     }
 

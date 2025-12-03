@@ -42,9 +42,7 @@ import java.security.GeneralSecurityException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Queue;
 
 import ricassiocosta.me.valv5.data.CursorFile;
@@ -59,10 +57,6 @@ import static ricassiocosta.me.valv5.encryption.Encryption.SUFFIX_V5;
 
 public class FileStuff {
     private static final String TAG = "FileStuff";
-    
-    // In-memory cache for decrypted folder names during the current session
-    // Maps encrypted folder name -> decrypted name (null if decryption failed)
-    private static final Map<String, String> decryptedFolderCache = new HashMap<>();
 
     @NonNull
     public static List<GalleryFile> getFilesInFolder(Context context, Uri pickedDir, boolean checkDecryptable) {
@@ -342,11 +336,7 @@ public class FileStuff {
         }
         
         // Get password from current session
-        Password passwordInstance = Password.getInstance();
-        if (passwordInstance == null) {
-            return folderName;
-        }
-        char[] password = passwordInstance.getPassword();
+        char[] password = Password.getInstance().getPassword();
         if (password == null) {
             return folderName;
         }
@@ -574,19 +564,17 @@ public class FileStuff {
             return;
         }
         
-        // Check cache first
-        if (decryptedFolderCache.containsKey(folderName)) {
-            String cachedResult = decryptedFolderCache.get(folderName);
-            if (cachedResult != null) {
-                folder.setEncryptedFolder(true);
-                folder.setDecryptedFolderName(cachedResult);
-            }
+        // Check cache first using the singleton FolderNameCache
+        FolderNameCache cache = FolderNameCache.getInstance();
+        String cachedResult = cache.get(folderName);
+        if (cachedResult != null) {
+            folder.setEncryptedFolder(true);
+            folder.setDecryptedFolderName(cachedResult);
             return;
         }
         
         // Get password from current session
-        Password passwordInstance = Password.getInstance();
-        char[] password = passwordInstance.getPassword();
+        char[] password = Password.getInstance().getPassword();
         if (password == null) {
             return;
         }
@@ -594,10 +582,9 @@ public class FileStuff {
         // Try to decrypt
         String decryptedName = Encryption.decryptFolderName(folderName, password);
         
-        // Cache the result (null if decryption failed)
-        decryptedFolderCache.put(folderName, decryptedName);
-        
+        // Cache the result if decryption succeeded
         if (decryptedName != null) {
+            cache.put(folderName, decryptedName);
             folder.setEncryptedFolder(true);
             folder.setDecryptedFolderName(decryptedName);
         }
@@ -609,7 +596,7 @@ public class FileStuff {
      * Call this when password changes or app goes to background.
      */
     public static void clearDecryptedFolderCache() {
-        decryptedFolderCache.clear();
+        FolderNameCache.getInstance().clear();
     }
 
     /**
