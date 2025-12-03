@@ -157,12 +157,18 @@ public class MainActivity extends AppCompatActivity {
         super.onTrimMemory(level);
         
         // Note: TRIM_MEMORY_UI_HIDDEN is called when app goes to background
-        // We should NOT wipe sensitive data here as the user may return quickly.
-        // The autolock feature (checkBackgroundLockTimeout) handles locking after timeout.
-        // SECURITY TRADE-OFF: Sensitive data remains in memory while the app is backgrounded,
-        // relying solely on the autolock timeout. If autolock is disabled or set to a long timeout,
-        // sensitive data may be exposed in memory. Consider this risk when configuring autolock.
-        // Only perform cleanup when system is critically low on memory
+        // To reduce risk, wipe non-essential sensitive data here while preserving session key/password.
+        // The autolock feature (checkBackgroundLockTimeout) still handles locking after timeout.
+        // SECURITY WARNING: Sensitive data may remain in memory while the app is backgrounded,
+        // depending on the autolock timeout. If autolock is disabled or set to a long timeout,
+        // sensitive data may be exposed in memory. Users should be warned of this risk in settings.
+        if (level == ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            SecureLog.d(TAG, "App backgrounded, performing partial sensitive data cleanup");
+            // This should wipe non-essential sensitive data (e.g., decrypted caches, temp buffers)
+            // but preserve session key/password for quick resume.
+            SecureMemoryManager.getInstance().performPartialCleanup(this); // Implement this method as needed
+        }
+        // Only perform full cleanup when system is critically low on memory
         if (level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE) {
             SecureLog.d(TAG, "Critical memory pressure, performing full cleanup");
             SecureMemoryManager.getInstance().performFullCleanup(this);
