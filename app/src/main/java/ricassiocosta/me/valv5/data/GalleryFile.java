@@ -497,7 +497,7 @@ public class GalleryFile implements Comparable<GalleryFile> {
         if (isEncryptedFolder && decryptedFolderName != null) {
             return decryptedFolderName;
         }
-        return name != null ? name : (encryptedName != null ? encryptedName : "");
+        return name != null ? name : (encryptedName != null ? encryptedName : "[Unknown]");
     }
 
     public long getLastModified() {
