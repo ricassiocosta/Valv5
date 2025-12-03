@@ -411,6 +411,29 @@ public class SecureMemoryManager {
     }
     
     /**
+     * Perform partial memory cleanup when app is backgrounded.
+     * Wipes sensitive buffers and clears Glide memory cache, but preserves session key for quick resume.
+     */
+    public void performPartialCleanup(@Nullable Context context) {
+        SecureLog.d(TAG, "Performing partial memory cleanup");
+        
+        // Wipe sensitive buffers (keys, passwords, decrypted content)
+        wipeSensitiveBuffers();
+        
+        if (context != null) {
+            // Clear Glide memory cache (must be called on main thread)
+            try {
+                Glide.get(context).clearMemory();
+            } catch (Exception e) {
+                SecureLog.w(TAG, "Failed to clear Glide memory cache", e);
+            }
+        }
+        
+        // Force garbage collection
+        System.gc();
+    }
+    
+    /**
      * Perform full memory cleanup including Glide cache and app cache.
      * Call this when the app is closing or locking.
      */

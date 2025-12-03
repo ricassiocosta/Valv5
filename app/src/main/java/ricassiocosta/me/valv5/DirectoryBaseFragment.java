@@ -393,7 +393,9 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         binding.recyclerView.setItemViewCacheSize(20);
         binding.recyclerView.setHasFixedSize(true);
         
-        galleryGridAdapter = new GalleryGridAdapter(requireActivity(), galleryViewModel.getGalleryFiles(), settings.showFilenames(), galleryViewModel.isRootDir(), galleryViewModel);
+        synchronized (LOCK) {
+            galleryGridAdapter = new GalleryGridAdapter(requireActivity(), galleryViewModel.getGalleryFiles(), settings.showFilenames(), galleryViewModel.isRootDir(), galleryViewModel);
+        }
         galleryGridAdapter.setNestedPath(galleryViewModel.getNestedPath());
         galleryGridAdapter.setOnFileDeleted(pos -> galleryPagerAdapter.notifyItemRemoved(pos));
         binding.recyclerView.setAdapter(galleryGridAdapter);
@@ -404,10 +406,12 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     }
 
     private void initFastScroll() {
-        if (galleryViewModel.isInitialised()) {
-            binding.recyclerView.setFastScrollEnabled(galleryViewModel.getGalleryFiles().size() > MIN_FILES_FOR_FAST_SCROLL);
-        } else {
-            binding.recyclerView.setFastScrollEnabled(false);
+        synchronized (LOCK) {
+            if (galleryViewModel.isInitialised()) {
+                binding.recyclerView.setFastScrollEnabled(galleryViewModel.getGalleryFiles().size() > MIN_FILES_FOR_FAST_SCROLL);
+            } else {
+                binding.recyclerView.setFastScrollEnabled(false);
+            }
         }
     }
 
@@ -419,28 +423,30 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         if (fileUri == null) {
             return;
         }
-        List<GalleryFile> galleryFiles = galleryViewModel.getGalleryFiles();
-        for (int i = 0; i < galleryFiles.size(); i++) {
-            GalleryFile file = galleryFiles.get(i);
-            Uri uri = file.getUri();
-            if (!file.isDirectory() && uri != null && uri.equals(fileUri)) {
-                final int position = i;
-                // Use layout change listener to ensure the layout is ready before scrolling
-                binding.recyclerView.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
-                    @Override
-                    public void onLayoutChange(View v, int left, int top, int right, int bottom,
-                                              int oldLeft, int oldTop, int oldRight, int oldBottom) {
-                        binding.recyclerView.removeOnLayoutChangeListener(this);
-                        binding.recyclerView.scrollToPosition(position);
-                        // Fade-in highlight effect on the item
-                        RecyclerView.ViewHolder viewHolder = binding.recyclerView.findViewHolderForAdapterPosition(position);
-                        if (viewHolder != null && viewHolder.itemView != null) {
-                            viewHolder.itemView.setAlpha(0.5f);
-                            viewHolder.itemView.animate().alpha(1f).setDuration(HIGHLIGHT_ANIMATION_DURATION_MS).start();
+        synchronized (LOCK) {
+            List<GalleryFile> galleryFiles = galleryViewModel.getGalleryFiles();
+            for (int i = 0; i < galleryFiles.size(); i++) {
+                GalleryFile file = galleryFiles.get(i);
+                Uri uri = file.getUri();
+                if (!file.isDirectory() && uri != null && uri.equals(fileUri)) {
+                    final int position = i;
+                    // Use layout change listener to ensure the layout is ready before scrolling
+                    binding.recyclerView.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+                        @Override
+                        public void onLayoutChange(View v, int left, int top, int right, int bottom,
+                                                  int oldLeft, int oldTop, int oldRight, int oldBottom) {
+                            binding.recyclerView.removeOnLayoutChangeListener(this);
+                            binding.recyclerView.scrollToPosition(position);
+                            // Fade-in highlight effect on the item
+                            RecyclerView.ViewHolder viewHolder = binding.recyclerView.findViewHolderForAdapterPosition(position);
+                            if (viewHolder != null && viewHolder.itemView != null) {
+                                viewHolder.itemView.setAlpha(0.5f);
+                                viewHolder.itemView.animate().alpha(1f).setDuration(HIGHLIGHT_ANIMATION_DURATION_MS).start();
+                            }
                         }
-                    }
-                });
-                return;
+                    });
+                    return;
+                }
             }
         }
     }
@@ -448,8 +454,10 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     abstract void onSelectionModeChanged(boolean inSelectionMode);
 
     void setupViewpager() {
-        galleryPagerAdapter = new GalleryPagerAdapter(requireActivity(), galleryViewModel.getGalleryFiles(), pos -> galleryGridAdapter.notifyItemRemoved(pos), galleryViewModel.getCurrentDocumentDirectory(),
-                galleryViewModel.isAllFolder(), galleryViewModel.getNestedPath(), galleryViewModel);
+        synchronized (LOCK) {
+            galleryPagerAdapter = new GalleryPagerAdapter(requireActivity(), galleryViewModel.getGalleryFiles(), pos -> galleryGridAdapter.notifyItemRemoved(pos), galleryViewModel.getCurrentDocumentDirectory(),
+                    galleryViewModel.isAllFolder(), galleryViewModel.getNestedPath(), galleryViewModel);
+        }
         
         // Set "Go to folder" callback for "All items" view
         if (galleryViewModel.isAllFolder()) {
@@ -856,16 +864,24 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                 try {
                     char[] password = Password.getInstance().getPassword();
                     if (password == null) {
-                        new Handler(Looper.getMainLooper()).post(() -> 
-                            Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed)));
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            if (!isAdded() || getActivity() == null) {
+                                return;
+                            }
+                            Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed));
+                        });
                         return;
                     }
                     
                     androidx.documentfile.provider.DocumentFile parentDir = 
                             androidx.documentfile.provider.DocumentFile.fromTreeUri(requireContext(), currentDirUri);
                     if (parentDir == null || !parentDir.isDirectory()) {
-                        new Handler(Looper.getMainLooper()).post(() -> 
-                            Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed)));
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            if (!isAdded() || getActivity() == null) {
+                                return;
+                            }
+                            Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed));
+                        });
                         return;
                     }
                     
@@ -873,6 +889,9 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                     
                     if (newFolderUri != null) {
                         new Handler(Looper.getMainLooper()).post(() -> {
+                            if (!isAdded() || getActivity() == null) {
+                                return;
+                            }
                             Toaster.getInstance(requireContext()).showShort(
                                     getString(R.string.dialog_create_folder_success, folderName));
                             // Add the new folder to the gallery view
@@ -888,13 +907,21 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                             }
                         });
                     } else {
-                        new Handler(Looper.getMainLooper()).post(() -> 
-                            Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed)));
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            if (!isAdded() || getActivity() == null) {
+                                return;
+                            }
+                            Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed));
+                        });
                     }
                 } catch (Exception e) {
                     SecureLog.e(TAG, "Error creating encrypted folder", e);
-                    new Handler(Looper.getMainLooper()).post(() -> 
-                        Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed)));
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        if (!isAdded() || getActivity() == null) {
+                            return;
+                        }
+                        Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed));
+                    });
                 }
             }).start();
         });
