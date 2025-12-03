@@ -22,6 +22,8 @@ import android.content.Intent;
 import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -209,12 +211,11 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
 
     void initViewModels() {
         importViewModel.setOnImportDoneFragment((destinationUri, sameDirectory, importedCount, failedCount, thumbErrorCount, importedFiles) -> {
-            FragmentActivity activity = getActivity();
-            if (activity == null || activity.isDestroyed()) {
+            if (!isSafe()) {
                 return;
             }
-            activity.runOnUiThread(() -> {
-                Toaster.getInstance(activity).showLong(getString(R.string.gallery_selected_files_imported, importedCount));
+            new Handler(Looper.getMainLooper()).post(() -> {
+                Toaster.getInstance(requireContext()).showLong(getString(R.string.gallery_selected_files_imported, importedCount));
 
                 if (sameDirectory) { // files added to current directory
                     synchronized (LOCK) {
@@ -241,12 +242,11 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
 
         deleteViewModel.setOnDeleteDoneFragment(deletedFiles -> {
             SecureLog.d(TAG, "setOnDeleteDoneFragment: " + SecureLog.safeCount(deletedFiles.size(), "deleted"));
-            FragmentActivity activity = getActivity();
-            if (activity == null || activity.isDestroyed()) {
+            if (!isSafe()) {
                 return;
             }
-            activity.runOnUiThread(() -> {
-                Toaster.getInstance(activity).showLong(getString(R.string.gallery_selected_files_deleted, deletedFiles.size()));
+            new Handler(Looper.getMainLooper()).post(() -> {
+                Toaster.getInstance(requireContext()).showLong(getString(R.string.gallery_selected_files_deleted, deletedFiles.size()));
                 synchronized (LOCK) {
                     List<GalleryFile> galleryFiles = galleryViewModel.getGalleryFiles();
                     for (int i = galleryFiles.size() - 1; i >= 0; i--) {
@@ -266,36 +266,33 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
 
         exportViewModel.setOnDoneFragment(processedFiles -> {
             SecureLog.d(TAG, "setOnExportDoneFragment: " + SecureLog.safeCount(processedFiles.size(), "exported"));
-            FragmentActivity activity = getActivity();
-            if (activity == null || activity.isDestroyed()) {
+            if (!isSafe()) {
                 return;
             }
-            activity.runOnUiThread(() -> {
+            new Handler(Looper.getMainLooper()).post(() -> {
                 galleryGridAdapter.onSelectionModeChanged(false);
-                Toaster.getInstance(activity).showLong(getString(R.string.gallery_selected_files_exported, processedFiles.size()));
+                Toaster.getInstance(requireContext()).showLong(getString(R.string.gallery_selected_files_exported, processedFiles.size()));
             });
         });
 
         copyViewModel.setOnDoneFragment(processedFiles -> {
             SecureLog.d(TAG, "setOnDoneFragment: " + SecureLog.safeCount(processedFiles.size(), "copied"));
-            FragmentActivity activity = getActivity();
-            if (activity == null || activity.isDestroyed()) {
+            if (!isSafe()) {
                 return;
             }
-            activity.runOnUiThread(() -> {
+            new Handler(Looper.getMainLooper()).post(() -> {
                 galleryGridAdapter.onSelectionModeChanged(false);
-                Toaster.getInstance(activity).showLong(getString(R.string.gallery_selected_files_copied, processedFiles.size()));
+                Toaster.getInstance(requireContext()).showLong(getString(R.string.gallery_selected_files_copied, processedFiles.size()));
             });
         });
 
         moveViewModel.setOnDoneFragment(processedFiles -> {
             SecureLog.d(TAG, "setOnDoneFragment: " + SecureLog.safeCount(processedFiles.size(), "moved"));
-            FragmentActivity activity = getActivity();
-            if (activity == null || activity.isDestroyed()) {
+            if (!isSafe()) {
                 return;
             }
-            activity.runOnUiThread(() -> {
-                Toaster.getInstance(activity).showLong(getString(R.string.gallery_selected_files_moved, processedFiles.size()));
+            new Handler(Looper.getMainLooper()).post(() -> {
+                Toaster.getInstance(requireContext()).showLong(getString(R.string.gallery_selected_files_moved, processedFiles.size()));
                 if (galleryViewModel.isAllFolder()) {
                     return;
                 }
@@ -357,7 +354,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
             }
             // New logic ends here
 
-            activity.runOnUiThread(() -> {
+            new Handler(Looper.getMainLooper()).post(() -> {
                 setLoading(false);
                 synchronized (LOCK) {
                     if (galleryViewModel.isInitialised()) {
@@ -590,7 +587,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                     galleryFiles.addAll(directories);
                     galleryFiles.addAll(files);
                 }
-                requireActivity().runOnUiThread(() -> {
+                new Handler(Looper.getMainLooper()).post(() -> {
                     synchronized (LOCK) {
                         galleryGridAdapter.notifyDataSetChanged();
                         galleryPagerAdapter.notifyDataSetChanged();
@@ -619,7 +616,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                             hiddenFiles.add(f);
                         }
                     }
-                    requireActivity().runOnUiThread(() -> {
+                    new Handler(Looper.getMainLooper()).post(() -> {
                         galleryGridAdapter.notifyDataSetChanged();
                         galleryPagerAdapter.notifyDataSetChanged();
                     });
@@ -859,7 +856,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                 try {
                     char[] password = Password.getInstance().getPassword();
                     if (password == null) {
-                        activity.runOnUiThread(() -> 
+                        new Handler(Looper.getMainLooper()).post(() -> 
                             Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed)));
                         return;
                     }
@@ -867,7 +864,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                     androidx.documentfile.provider.DocumentFile parentDir = 
                             androidx.documentfile.provider.DocumentFile.fromTreeUri(requireContext(), currentDirUri);
                     if (parentDir == null || !parentDir.isDirectory()) {
-                        activity.runOnUiThread(() -> 
+                        new Handler(Looper.getMainLooper()).post(() -> 
                             Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed)));
                         return;
                     }
@@ -875,7 +872,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                     Uri newFolderUri = FileStuff.createEncryptedFolder(requireContext(), parentDir, folderName, password);
                     
                     if (newFolderUri != null) {
-                        activity.runOnUiThread(() -> {
+                        new Handler(Looper.getMainLooper()).post(() -> {
                             Toaster.getInstance(requireContext()).showShort(
                                     getString(R.string.dialog_create_folder_success, folderName));
                             // Add the new folder to the gallery view
@@ -891,12 +888,12 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                             }
                         });
                     } else {
-                        activity.runOnUiThread(() -> 
+                        new Handler(Looper.getMainLooper()).post(() -> 
                             Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed)));
                     }
                 } catch (Exception e) {
                     SecureLog.e(TAG, "Error creating encrypted folder", e);
-                    activity.runOnUiThread(() -> 
+                    new Handler(Looper.getMainLooper()).post(() -> 
                         Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed)));
                 }
             }).start();
