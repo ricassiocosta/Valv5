@@ -337,6 +337,9 @@ public class FileStuff {
         
         // Get password from current session
         Password passwordInstance = Password.getInstance();
+        if (passwordInstance == null) {
+            return folderName;
+        }
         char[] password = passwordInstance.getPassword();
         if (password == null) {
             return folderName;
