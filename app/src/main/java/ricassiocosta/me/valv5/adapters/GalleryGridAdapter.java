@@ -410,7 +410,8 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                     Navigation.findNavController(holder.binding.layout).navigate(R.id.action_directory_to_directory_all);
                 }
             } else if (selectMode) {
-                if (isRootDir || !galleryFile.isDirectory()) {
+                // Permite selecionar qualquer pasta exceto "All"
+                if (!galleryFile.isAllFolder()) {
                     if (!selectedFiles.contains(galleryFile)) {
                         selectedFiles.add(galleryFile);
                         lastSelectedPos = pos;
@@ -453,7 +454,8 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             }
         });
         holder.binding.layout.setOnLongClickListener(v -> {
-            if (!galleryFile.isAllFolder() && (isRootDir || !galleryFile.isDirectory())) {
+            // Permite selecionar qualquer pasta exceto "All"
+            if (!galleryFile.isAllFolder()) {
                 int pos = holder.getBindingAdapterPosition();
                 if (!selectMode) {
                     setSelectMode(true);
@@ -479,9 +481,9 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                         holder.binding.layout.performClick();
                     }
                 }
-                lastSelectedPos = pos;
+                return true;
             }
-            return true;
+            return false;
         });
     }
 
@@ -805,5 +807,15 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
     @NonNull
     public List<GalleryFile> getSelectedFiles() {
         return selectedFiles;
+    }
+
+    public List<GalleryFile> getSelectedFolders() {
+        List<GalleryFile> folders = new ArrayList<>();
+        for (GalleryFile g : selectedFiles) {
+            if (g.isDirectory()) {
+                folders.add(g);
+            }
+        }
+        return folders;
     }
 }

@@ -1,0 +1,12 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:context="ricassiocosta.me.valv5.MainActivity">
+
+    <item
+        android:id="@+id/delete_subfolder"
+        android:icon="@drawable/ic_outline_delete_24"
+        android:title="@string/menu_delete_subfolder"
+        app:showAsAction="ifRoom" />
+    <!-- ...existing menu items for subfolder context (if needed)... -->
+</menu>

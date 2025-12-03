@@ -265,4 +265,9 @@
     <string name="biometrics_prompt_subtitle">Allow logging in to this vault using your biometric credential.</string>
     <string name="biometrics_unlock_title">Unlock your vault</string>
 
+    <string name="menu_delete_subfolder">Delete subfolder</string>
+    <string name="dialog_delete_subfolder_title">Delete subfolder?</string>
+    <string name="dialog_delete_subfolder_message">Are you sure you want to delete this subfolder and all its contents? This action cannot be undone.</string>
+    <string name="dialog_delete_subfolder_confirm">Delete</string>
+    <string name="dialog_delete_subfolder_cancel">Cancel</string>
 </resources>

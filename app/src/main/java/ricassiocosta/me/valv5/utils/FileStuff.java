@@ -632,4 +632,20 @@ public class FileStuff {
         
         return newFolder.getUri();
     }
+
+    /**
+     * Recursively deletes a DocumentFile and all its contents.
+     * @param file The DocumentFile to delete
+     * @return true if all deletions succeeded
+     */
+    public static boolean deleteDocumentFileRecursive(@NonNull DocumentFile file) {
+        boolean success = true;
+        if (file.isDirectory()) {
+            for (DocumentFile child : file.listFiles()) {
+                success &= deleteDocumentFileRecursive(child);
+            }
+        }
+        success &= file.delete();
+        return success;
+    }
 }
