@@ -364,17 +364,24 @@ public class FileStuff {
      */
     @NonNull
     private static String decryptPathFolderNames(@NonNull String path) {
-        String[] parts = path.split("/");
         StringBuilder result = new StringBuilder();
-        for (int i = 0; i < parts.length; i++) {
-            if (i > 0) {
-                result.append("/");
-            }
-            String part = parts[i];
-            if (Encryption.looksLikeEncryptedFolder(part)) {
-                result.append(tryGetDecryptedFolderName(part));
-            } else {
-                result.append(part);
+        int len = path.length();
+        int start = 0;
+        boolean first = true;
+        for (int i = 0; i <= len; i++) {
+            if (i == len || path.charAt(i) == '/') {
+                String part = path.substring(start, i);
+                if (!first) {
+                    result.append("/");
+                } else {
+                    first = false;
+                }
+                if (Encryption.looksLikeEncryptedFolder(part)) {
+                    result.append(tryGetDecryptedFolderName(part));
+                } else {
+                    result.append(part);
+                }
+                start = i + 1;
             }
         }
         return result.toString();
