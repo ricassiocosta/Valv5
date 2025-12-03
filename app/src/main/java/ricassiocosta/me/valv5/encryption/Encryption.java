@@ -2081,7 +2081,8 @@ public class Encryption {
             
             // Minimum size: salt (16) + iv (12) + tag (16) + at least 1 byte ciphertext
             int minSize = SALT_LENGTH + IV_LENGTH + POLY1305_TAG_LENGTH + 1;
-            // Maximum size: salt (16) + iv (12) + tag (16) + max folder name (up to 120 bytes for 30 chars in UTF-8)
+            // Maximum size: salt (16) + iv (12) + tag (16) + max folder name in UTF-8
+            // UTF-8 uses 1-4 bytes per character; worst case is 4 bytes × 30 chars = 120 bytes
             int maxSize = SALT_LENGTH + IV_LENGTH + POLY1305_TAG_LENGTH + (MAX_FOLDER_NAME_LENGTH * 4);
             
             if (combined.length < minSize || combined.length > maxSize) {
