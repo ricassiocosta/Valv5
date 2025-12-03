@@ -2071,7 +2071,11 @@ public class Encryption {
                     android.util.Base64.URL_SAFE | android.util.Base64.NO_PADDING);
             
             // Minimum size: salt (16) + iv (12) + tag (16) + at least 1 byte ciphertext
-            if (combined.length < SALT_LENGTH + IV_LENGTH + POLY1305_TAG_LENGTH + 1) {
+            int minSize = SALT_LENGTH + IV_LENGTH + POLY1305_TAG_LENGTH + 1;
+            // Maximum size: salt (16) + iv (12) + tag (16) + max folder name (30 bytes)
+            int maxSize = SALT_LENGTH + IV_LENGTH + POLY1305_TAG_LENGTH + MAX_FOLDER_NAME_LENGTH;
+            
+            if (combined.length < minSize || combined.length > maxSize) {
                 return null;
             }
             
