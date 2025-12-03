@@ -885,9 +885,11 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                             newFolder.setEncryptedFolder(true);
                             newFolder.setDecryptedFolderName(folderName);
                             synchronized (LOCK) {
-                                galleryViewModel.getGalleryFiles().add(0, newFolder);
-                                galleryGridAdapter.notifyItemInserted(0);
-                                galleryPagerAdapter.notifyItemInserted(0);
+                                galleryViewModel.getGalleryFiles().add(newFolder);
+                                // Re-sort the list to maintain the current sort order
+                                Collections.sort(galleryViewModel.getGalleryFiles());
+                                galleryGridAdapter.notifyDataSetChanged();
+                                galleryPagerAdapter.notifyDataSetChanged();
                             }
                         });
                     } else {
