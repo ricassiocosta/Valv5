@@ -42,7 +42,9 @@ import java.security.GeneralSecurityException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 
 import ricassiocosta.me.valv5.data.CursorFile;
@@ -57,6 +59,10 @@ import static ricassiocosta.me.valv5.encryption.Encryption.SUFFIX_V5;
 
 public class FileStuff {
     private static final String TAG = "FileStuff";
+    
+    // In-memory cache for decrypted folder names during the current session
+    // Maps encrypted folder name -> decrypted name (null if decryption failed)
+    private static final Map<String, String> decryptedFolderCache = new HashMap<>();
 
     @NonNull
     public static List<GalleryFile> getFilesInFolder(Context context, Uri pickedDir, boolean checkDecryptable) {
@@ -548,6 +554,9 @@ public class FileStuff {
      * If decryption succeeds, sets isEncryptedFolder=true and decryptedFolderName on the GalleryFile.
      * If decryption fails (wrong password or not an encrypted folder), leaves the GalleryFile unchanged.
      * 
+     * Uses in-memory cache to avoid expensive Argon2 key derivation for repeated folder names.
+     * Cache is cleared when password changes or app is closed.
+     * 
      * @param folder The GalleryFile representing the folder
      */
     private static void tryDecryptFolderNameForGalleryFile(@NonNull GalleryFile folder) {
@@ -565,6 +574,16 @@ public class FileStuff {
             return;
         }
         
+        // Check cache first
+        if (decryptedFolderCache.containsKey(folderName)) {
+            String cachedResult = decryptedFolderCache.get(folderName);
+            if (cachedResult != null) {
+                folder.setEncryptedFolder(true);
+                folder.setDecryptedFolderName(cachedResult);
+            }
+            return;
+        }
+        
         // Get password from current session
         Password passwordInstance = Password.getInstance();
         char[] password = passwordInstance.getPassword();
@@ -574,11 +593,23 @@ public class FileStuff {
         
         // Try to decrypt
         String decryptedName = Encryption.decryptFolderName(folderName, password);
+        
+        // Cache the result (null if decryption failed)
+        decryptedFolderCache.put(folderName, decryptedName);
+        
         if (decryptedName != null) {
             folder.setEncryptedFolder(true);
             folder.setDecryptedFolderName(decryptedName);
         }
         // If decryption fails, folder remains as a regular folder with original name
+    }
+    
+    /**
+     * Clear the decrypted folder name cache.
+     * Call this when password changes or app goes to background.
+     */
+    public static void clearDecryptedFolderCache() {
+        decryptedFolderCache.clear();
     }
 
     /**
