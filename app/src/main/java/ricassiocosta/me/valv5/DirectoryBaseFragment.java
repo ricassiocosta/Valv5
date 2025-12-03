@@ -873,8 +873,22 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                         return;
                     }
                     
-                    androidx.documentfile.provider.DocumentFile parentDir = 
-                            androidx.documentfile.provider.DocumentFile.fromTreeUri(requireContext(), currentDirUri);
+                        // Navega do root até a subpasta usando nestedPath
+                        String rootDir = galleryViewModel.getDirectory();
+                        String nestedPath = galleryViewModel.getNestedPath();
+                        androidx.documentfile.provider.DocumentFile parentDir = 
+                                androidx.documentfile.provider.DocumentFile.fromTreeUri(requireContext(), Uri.parse(rootDir));
+                        if (parentDir != null && nestedPath != null && !nestedPath.isEmpty()) {
+                            String[] segments = nestedPath.split("/");
+                            for (String segment : segments) {
+                                if (segment != null && !segment.isEmpty()) {
+                                    androidx.documentfile.provider.DocumentFile found = parentDir.findFile(segment);
+                                    if (found != null && found.isDirectory()) {
+                                        parentDir = found;
+                                    }
+                                }
+                            }
+                        }
                     if (parentDir == null || !parentDir.isDirectory()) {
                         new Handler(Looper.getMainLooper()).post(() -> {
                             if (!isAdded() || getActivity() == null) {
