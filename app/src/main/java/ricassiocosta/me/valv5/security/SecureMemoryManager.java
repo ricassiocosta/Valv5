@@ -318,11 +318,6 @@ public class SecureMemoryManager {
             }
             bufferIterator.remove();
         }
-        
-        SecureLog.d(TAG, String.format(
-                "Wiped sensitive: %d byte arrays, %d char arrays, %d ByteBuffers",
-                wipedByteArrays, wipedCharArrays, wipedByteBuffers
-        ));
     }
     
     /**
@@ -413,11 +408,6 @@ public class SecureMemoryManager {
         
         // Force garbage collection to help clear unreferenced sensitive data
         System.gc();
-        
-        SecureLog.d(TAG, String.format(
-                "Wiped: %d byte arrays, %d char arrays, %d ByteBuffers, %d Bitmaps, %d caches, %d maps",
-                wipedByteArrays, wipedCharArrays, wipedByteBuffers, wipedBitmaps, clearedCaches, clearedMaps
-        ));
     }
     
     /**

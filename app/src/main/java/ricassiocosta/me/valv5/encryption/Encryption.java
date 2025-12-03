@@ -578,7 +578,8 @@ public class Encryption {
             try {
                 secretKey.destroy();
             } catch (DestroyFailedException e) {
-                e.printStackTrace();
+                // Expected on Android - SecretKeySpec doesn't support destroy()
+                // This is not a security issue, just a limitation of the platform
             }
         }
     }
@@ -1736,15 +1737,11 @@ public class Encryption {
                         }
                     }
                     thumbUri = Uri.fromFile(thumbFile.toFile());
-                    SecureLog.d(TAG, "readCompositeMetadata: thumbUri=" + thumbUri);
                 }
             }
 
             int fileType = cis.getFileType();
             String originalName = cis.getOriginalFileName();
-            
-            SecureLog.d(TAG, "readCompositeMetadata: fileType=" + fileType + ", originalName=" + originalName);
-            
             cis.close();
             inputStream.close();
             

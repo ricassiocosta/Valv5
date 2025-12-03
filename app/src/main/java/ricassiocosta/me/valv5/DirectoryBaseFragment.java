@@ -209,8 +209,6 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
 
     void initViewModels() {
         importViewModel.setOnImportDoneFragment((destinationUri, sameDirectory, importedCount, failedCount, thumbErrorCount, importedFiles) -> {
-            SecureLog.d(TAG, "setOnImportDoneFragment: sameDirectory=" + sameDirectory + ", " + SecureLog.safeCount(importedCount, "imported") + ", " + SecureLog.safeCount(failedCount, "failed"));
-
             FragmentActivity activity = getActivity();
             if (activity == null || activity.isDestroyed()) {
                 return;

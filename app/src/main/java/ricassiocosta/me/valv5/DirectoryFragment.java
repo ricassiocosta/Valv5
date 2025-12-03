@@ -110,8 +110,6 @@ public class DirectoryFragment extends DirectoryBaseFragment {
         }
         
         galleryViewModel.setAllFolder(false);
-        SecureLog.d(TAG, "init: directory: " + SecureLog.redactPath(galleryViewModel.getDirectory()));
-        SecureLog.d(TAG, "init: nested path: " + SecureLog.redactPath(galleryViewModel.getNestedPath()));
         if (galleryViewModel.getCurrentDirectoryUri() != null) {
             galleryViewModel.setRootDir(false);
             if (!initActionBar(false)) { // getSupportActionBar() is null directly after orientation change
