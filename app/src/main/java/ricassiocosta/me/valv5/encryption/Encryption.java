@@ -1712,7 +1712,13 @@ public class Encryption {
                 if (hasThumbnail) {
                     // Create cache file for thumbnail
                     File cacheDir = context.getCacheDir();
-                    cacheDir.mkdir();
+                    if (!cacheDir.exists()) {
+                        boolean dirCreated = cacheDir.mkdir();
+                        if (!dirCreated && !cacheDir.exists()) {
+                            SecureLog.e(TAG, "readCompositeMetadata: Failed to create cache directory: " + cacheDir.getAbsolutePath());
+                            return null;
+                        }
+                    }
                     Path thumbFile = Files.createTempFile(cacheDir.toPath(), null, ".jpg");
                     
                     // Write thumbnail to cache
