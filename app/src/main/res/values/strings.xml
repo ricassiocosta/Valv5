@@ -232,7 +232,7 @@
     <string name="dialog_import_to_title">Destination</string>
     <string name="dialog_import_to_button_neutral">Add new</string>
     <string name="dialog_edit_included_title">Select folders to remove from the start screen</string>
-    <string name="directory_does_not_exist">Folder does not exit</string>
+    <string name="directory_does_not_exist">Folder does not exist</string>
     
     <!-- Create encrypted folder dialog -->
     <string name="dialog_create_folder_title">Create encrypted folder</string>
