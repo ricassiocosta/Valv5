@@ -71,11 +71,10 @@ public class MyAppGlideModule extends AppGlideModule {
     public void applyOptions(@NonNull Context context, @NonNull GlideBuilder builder) {
         builder.setLogLevel(Log.ERROR);
         // Disable disk cache globally for security - no decrypted data should be written to disk
-        // Also skip memory cache to ensure no cached data persists
+        // Memory cache is safe as it is cleared when the app is closed or locked
         builder.setDefaultRequestOptions(
                 new RequestOptions()
                         .diskCacheStrategy(DiskCacheStrategy.NONE)
-                        .skipMemoryCache(true)
         );
         super.applyOptions(context, builder);
     }

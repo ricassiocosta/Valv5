@@ -928,6 +928,19 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                             Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed));
                         });
                     }
+                } catch (IllegalArgumentException e) {
+                    SecureLog.e(TAG, "Invalid folder name", e);
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        if (!isAdded() || getActivity() == null) {
+                            return;
+                        }
+                        String message = e.getMessage();
+                        if (message != null && !message.isEmpty()) {
+                            Toaster.getInstance(requireContext()).showShort(message);
+                        } else {
+                            Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed));
+                        }
+                    });
                 } catch (Exception e) {
                     SecureLog.e(TAG, "Error creating encrypted folder", e);
                     new Handler(Looper.getMainLooper()).post(() -> {
