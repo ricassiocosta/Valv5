@@ -466,7 +466,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             }
         });
         holder.binding.layout.setOnLongClickListener(v -> {
-            // Permite selecionar qualquer pasta exceto "All"
+            // Allow selecting any folder except "All"
             if (!galleryFile.isAllFolder()) {
                 int pos = holder.getBindingAdapterPosition();
                 if (!selectMode) {
