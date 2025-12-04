@@ -53,6 +53,11 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
+        // Ensure screen-off receiver is registered for the whole lifetime of the
+        // activity object using the application context. Registering only in
+        // onStart()/onStop() can miss the ACTION_SCREEN_OFF broadcast due to
+        // lifecycle ordering (onStop() may be called before the broadcast).
+        installScreenOffReceiver();
         Settings settings = Settings.getInstance(this);
         if (settings.isSecureFlag()) {
             getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
@@ -95,14 +100,12 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStart() {
         super.onStart();
-        installScreenOffReceiver();
         checkBackgroundLockTimeout();
     }
 
     @Override
     protected void onStop() {
         super.onStop();
-        uninstallScreenOffReceiver();
         startBackgroundLockTimer();
     }
 
@@ -144,6 +147,10 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        // Unregister the receiver when the activity instance is destroyed.
+        // We register with the application context so we must unregister
+        // the same receiver instance explicitly to avoid leaks.
+        uninstallScreenOffReceiver();
         if (!isChangingConfigurations()) {
             // Perform full memory cleanup when app is being destroyed
             Password.lock(this, false);
@@ -188,13 +195,28 @@ public class MainActivity extends AppCompatActivity {
             screenOffReceiver = new ScreenOffReceiver();
             IntentFilter filter = new IntentFilter();
             filter.addAction(Intent.ACTION_SCREEN_OFF);
-            registerReceiver(screenOffReceiver, filter);
+            try {
+                getApplicationContext().registerReceiver(screenOffReceiver, filter);
+            } catch (Exception e) {
+                SecureLog.w(TAG, "Failed to register screenOffReceiver on application context", e);
+                // Fallback to activity context registration
+                registerReceiver(screenOffReceiver, filter);
+            }
         }
     }
 
     private void uninstallScreenOffReceiver() {
         if (screenOffReceiver != null) {
-            unregisterReceiver(screenOffReceiver);
+            try {
+                getApplicationContext().unregisterReceiver(screenOffReceiver);
+            } catch (IllegalArgumentException e) {
+                // Might not be registered on application context; try activity context
+                try {
+                    unregisterReceiver(screenOffReceiver);
+                } catch (IllegalArgumentException ex) {
+                    SecureLog.w(TAG, "Receiver already unregistered", ex);
+                }
+            }
             screenOffReceiver = null;
         }
     }
@@ -353,6 +375,7 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceive(Context context, Intent intent) {
             if (Objects.equals(intent.getAction(), Intent.ACTION_SCREEN_OFF)) {
+                SecureLog.d(TAG, "ScreenOffReceiver.onReceive: ACTION_SCREEN_OFF received");
                 NavHostFragment navHostFragment = (NavHostFragment) getSupportFragmentManager().findFragmentById(R.id.nav_host_fragment_content_main);
                 assert navHostFragment != null;
                 NavController navController = navHostFragment.getNavController();
