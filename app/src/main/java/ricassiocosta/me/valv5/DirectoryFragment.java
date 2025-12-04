@@ -238,7 +238,7 @@ public class DirectoryFragment extends DirectoryBaseFragment {
                 if (!selectedFolders.isEmpty()) {
                     Dialogs.showConfirmationDialog(context, getString(R.string.dialog_delete_subfolder_title),
                             getString(R.string.dialog_delete_subfolder_message), (dialog, which) -> {
-                        // Para cada subpasta selecionada, resolva a partir do root usando nestedPath
+                        // For each selected subfolder, resolve from root using nestedPath
                         String rootDirPath = galleryViewModel.getDirectory();
                         String nestedPath = galleryViewModel.getNestedPath();
                         DocumentFile parentDir = DocumentFile.fromTreeUri(context, Uri.parse(rootDirPath));
