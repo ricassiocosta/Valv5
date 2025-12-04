@@ -233,40 +233,61 @@ public class DirectoryFragment extends DirectoryBaseFragment {
             if (galleryViewModel.isRootDir()) {
                 onRemoveFolderClicked(context);
             } else {
-                // Subfolder deletion: only allowed if folders are selected
-                List<GalleryFile> selectedFolders = galleryGridAdapter.getSelectedFolders();
-                if (!selectedFolders.isEmpty()) {
-                    Dialogs.showConfirmationDialog(context, getString(R.string.dialog_delete_subfolder_title),
-                            getString(R.string.dialog_delete_subfolder_message), (dialog, which) -> {
-                        // For each selected subfolder, resolve from root using nestedPath
-                        String rootDirPath = galleryViewModel.getDirectory();
-                        String nestedPath = galleryViewModel.getNestedPath();
-                        DocumentFile parentDir = DocumentFile.fromTreeUri(context, Uri.parse(rootDirPath));
-                        if (parentDir != null && nestedPath != null && !nestedPath.isEmpty()) {
-                            String[] segments = nestedPath.split("/");
-                            for (String segment : segments) {
-                                if (segment != null && !segment.isEmpty()) {
-                                    DocumentFile found = parentDir.findFile(segment);
-                                    if (found != null && found.isDirectory()) {
-                                        parentDir = found;
+                // Subfolder deletion: only allowed if folders or files are selected
+                List<GalleryFile> selectedItems = galleryGridAdapter.getSelectedFiles();
+                if (!selectedItems.isEmpty()) {
+                    // Determine if we're deleting files or folders based on the first item
+                    boolean isDeletingFolders = selectedItems.get(0).isDirectory();
+                    
+                    int dialogTitleId = isDeletingFolders ? R.string.dialog_delete_subfolder_title : R.string.dialog_delete_files_title;
+                    String dialogMessage = isDeletingFolders ? 
+                        getString(R.string.dialog_delete_subfolder_message) :
+                        getResources().getQuantityString(R.plurals.dialog_delete_files_message, selectedItems.size(), selectedItems.size());
+                    
+                    Dialogs.showConfirmationDialog(context, getString(dialogTitleId),
+                            dialogMessage, (dialog, which) -> {
+                        if (isDeletingFolders) {
+                            // Delete folders
+                            String rootDirPath = galleryViewModel.getDirectory();
+                            String nestedPath = galleryViewModel.getNestedPath();
+                            DocumentFile parentDir = DocumentFile.fromTreeUri(context, Uri.parse(rootDirPath));
+                            if (parentDir != null && nestedPath != null && !nestedPath.isEmpty()) {
+                                String[] segments = nestedPath.split("/");
+                                for (String segment : segments) {
+                                    if (segment != null && !segment.isEmpty()) {
+                                        DocumentFile found = parentDir.findFile(segment);
+                                        if (found != null && found.isDirectory()) {
+                                            parentDir = found;
+                                        }
                                     }
                                 }
                             }
-                        }
-                        for (GalleryFile folder : selectedFolders) {
-                            // The encrypted subfolder name is the encryptedName
-                            String encryptedName = folder.getEncryptedName();
-                            DocumentFile docFolder = parentDir != null ? parentDir.findFile(encryptedName) : null;
-                            if (docFolder != null && docFolder.isDirectory()) {
-                                FileStuff.deleteDocumentFileRecursive(docFolder);
+                            for (GalleryFile folder : selectedItems) {
+                                String encryptedName = folder.getEncryptedName();
+                                DocumentFile docFolder = parentDir != null ? parentDir.findFile(encryptedName) : null;
+                                if (docFolder != null && docFolder.isDirectory()) {
+                                    FileStuff.deleteDocumentFileRecursive(docFolder);
+                                }
+                                int i = galleryViewModel.getGalleryFiles().indexOf(folder);
+                                if (i >= 0) {
+                                    galleryViewModel.getGalleryFiles().remove(i);
+                                    galleryGridAdapter.notifyItemRemoved(i);
+                                }
                             }
-                            int i = galleryViewModel.getGalleryFiles().indexOf(folder);
-                            if (i >= 0) {
-                                galleryViewModel.getGalleryFiles().remove(i);
-                                galleryGridAdapter.notifyItemRemoved(i);
+                            galleryGridAdapter.onSelectionModeChanged(false);
+                        } else {
+                            // Delete files using deleteViewModel
+                            deleteViewModel.getFilesToDelete().clear();
+                            deleteViewModel.getFilesToDelete().addAll(selectedItems);
+                            
+                            // Calculate total bytes to delete
+                            long totalBytes = 0;
+                            for (GalleryFile file : selectedItems) {
+                                totalBytes += file.getSize();
                             }
+                            deleteViewModel.setTotalBytes(totalBytes);
+                            deleteViewModel.startDelete(context);
                         }
-                        galleryGridAdapter.onSelectionModeChanged(false);
                     });
                 }
             }
