@@ -233,7 +233,7 @@ public class DirectoryFragment extends DirectoryBaseFragment {
             if (galleryViewModel.isRootDir()) {
                 onRemoveFolderClicked(context);
             } else {
-                // Deleção de subfolders: só permite se há pastas selecionadas
+                // Subfolder deletion: only allowed if folders are selected
                 List<GalleryFile> selectedFolders = galleryGridAdapter.getSelectedFolders();
                 if (!selectedFolders.isEmpty()) {
                     Dialogs.showConfirmationDialog(context, getString(R.string.dialog_delete_subfolder_title),
