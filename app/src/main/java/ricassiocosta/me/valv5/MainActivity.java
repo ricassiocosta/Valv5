@@ -38,6 +38,10 @@ import ricassiocosta.me.valv5.viewmodel.ShareViewModel;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
+    
+    // Delay before finishing activity after starting return-to-app, allowing
+    // the new activity to fully start before this one finishes
+    private static final int RETURN_TO_APP_FINISH_DELAY_MS = 300;
 
     private AppBarConfiguration appBarConfiguration;
     private ActivityMainBinding binding;
@@ -331,10 +335,15 @@ public class MainActivity extends AppCompatActivity {
         startActivity(homeIntent);
     }
 
-    /*
-     * Centralized handler invoked by application-level receiver when an
-     * activity instance is available. Keeps the same behavior previously in
-     * the activity-scoped receiver branch.
+    /**
+     * Centralized handler invoked by application-level receiver (App.java) when an
+     * activity instance is available. This method is package-private to allow access
+     * from App.java while avoiding public API exposure.
+     * 
+     * Note: This creates an intentional coupling between App and MainActivity for
+     * screen-off handling. The coupling is necessary because the receiver is registered
+     * at the Application level (to avoid lifecycle timing issues), but the lock behavior
+     * requires access to the NavController which is owned by MainActivity.
      */
     void handleScreenOffFromReceiver() {
         NavHostFragment navHostFragment = (NavHostFragment) getSupportFragmentManager().findFragmentById(R.id.nav_host_fragment_content_main);
@@ -359,16 +368,17 @@ public class MainActivity extends AppCompatActivity {
             startActivity(intent);
 
             if (settings.returnToLastApp()) {
-                // Try to return to preferred/last app before finalizing; keep a short delay
-                // so the restart intent has time to take effect.
-                returnToLastApp();
+                // Try to return to preferred/last app. Use a delayed handler to ensure
+                // the new activity has time to start before we finish this one.
+                // The delay also helps avoid race conditions with FLAG_ACTIVITY_CLEAR_TASK.
                 new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                     try {
+                        returnToLastApp();
                         finish();
                     } catch (Exception e) {
                         SecureLog.w(TAG, "Error finishing activity after returnToLastApp", e);
                     }
-                }, 500);
+                }, RETURN_TO_APP_FINISH_DELAY_MS);
             } else {
                 // Finish current activity instance (new one started will show password)
                 try {
