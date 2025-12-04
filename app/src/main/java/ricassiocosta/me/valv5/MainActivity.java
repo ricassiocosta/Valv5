@@ -38,17 +38,13 @@ import ricassiocosta.me.valv5.viewmodel.ShareViewModel;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
-    
-    // Delay before finishing activity after starting return-to-app, allowing
-    // the new activity to fully start before this one finishes
-    private static final int RETURN_TO_APP_FINISH_DELAY_MS = 300;
 
     private AppBarConfiguration appBarConfiguration;
     private ActivityMainBinding binding;
     
-    
-    // Background lock timer - stores timestamp when app went to background
-    private long backgroundTimestamp = 0;
+    // Handler for scheduling background lock timeout
+    private final android.os.Handler backgroundLockHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private Runnable backgroundLockRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -98,13 +94,15 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStart() {
         super.onStart();
-        checkBackgroundLockTimeout();
+        // Cancel any pending background lock since user is returning to the app
+        cancelBackgroundLockTimer();
     }
 
     @Override
     protected void onStop() {
         super.onStop();
-        startBackgroundLockTimer();
+        // Schedule background lock if timeout is configured
+        scheduleBackgroundLockTimer();
     }
 
     private void handleSendSingle(@NonNull Intent intent) {
@@ -145,9 +143,17 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        // Cancel any pending background lock timer to prevent memory leaks
+        // and avoid executing callbacks on a destroyed activity
+        cancelBackgroundLockTimer();
+        
         // Receiver is managed at application level (App.java). Do not unregister here.
         if (!isChangingConfigurations()) {
             // Perform full memory cleanup when app is being destroyed
+            // Note: Password.lock() may be called redundantly here if already locked
+            // by performBackgroundLock() or handleScreenOffFromReceiver(), but this is
+            // intentional for security (defense in depth) - ensures session is invalidated
+            // even if the explicit lock calls failed or were skipped.
             Password.lock(this, false);
             SecureMemoryManager.getInstance().performFullCleanup(this);
         }
@@ -188,18 +194,20 @@ public class MainActivity extends AppCompatActivity {
     // Screen-off receiver lifecycle is managed by `App.java`.
 
     /**
-     * Start the background lock timer when the app goes to background.
-     * This stores the timestamp when the app went to background.
+     * Schedule the background lock timer when the app goes to background.
+     * The lock will execute after the configured timeout while the app is still in background.
      * Does NOT affect screen off lock which is handled separately.
      */
-    private void startBackgroundLockTimer() {
+    private void scheduleBackgroundLockTimer() {
+        // Cancel any existing timer first
+        cancelBackgroundLockTimer();
+        
         Settings settings = Settings.getInstance(this);
         int timeoutSeconds = settings.getBackgroundLockTimeout();
         
-        // If timeout is 0 (disabled), don't start the timer
+        // If timeout is 0 (disabled), don't schedule
         if (timeoutSeconds == 0) {
             SecureLog.d(TAG, "Background lock timer is disabled");
-            backgroundTimestamp = 0;
             return;
         }
         
@@ -209,77 +217,48 @@ public class MainActivity extends AppCompatActivity {
             NavController navController = navHostFragment.getNavController();
             if (navController.getCurrentDestination() != null && 
                 navController.getCurrentDestination().getId() == R.id.password) {
-                SecureLog.d(TAG, "Vault already locked, not starting background timer");
-                backgroundTimestamp = 0;
+                SecureLog.d(TAG, "Vault already locked, not scheduling background timer");
                 return;
             }
         }
         
-        // Store the timestamp when app went to background
-        backgroundTimestamp = System.currentTimeMillis();
-        SecureLog.d(TAG, "Background lock timer started: " + timeoutSeconds + " seconds, timestamp: " + backgroundTimestamp);
-    }
-
-    /**
-     * Check if the background lock timeout has expired when returning to foreground.
-     * If expired, lock the vault immediately.
-     */
-    private void checkBackgroundLockTimeout() {
-        if (backgroundTimestamp == 0) {
-            SecureLog.d(TAG, "No background timestamp, skipping lock check");
-            return;
-        }
-        
-        Settings settings = Settings.getInstance(this);
-        int timeoutSeconds = settings.getBackgroundLockTimeout();
-        
-        // If timeout is 0 (disabled), clear timestamp and return
-        if (timeoutSeconds == 0) {
-            backgroundTimestamp = 0;
-            return;
-        }
-        
-        long currentTime = System.currentTimeMillis();
-        long elapsedMillis = currentTime - backgroundTimestamp;
+        // Schedule the lock to execute after the timeout
         long timeoutMillis = timeoutSeconds * 1000L;
+        SecureLog.d(TAG, "Scheduling background lock in " + timeoutSeconds + " seconds");
         
-        SecureLog.d(TAG, "Background lock check - elapsed: " + elapsedMillis + "ms, timeout: " + timeoutMillis + "ms");
-        
-        // Clear the timestamp
-        backgroundTimestamp = 0;
-        
-        if (elapsedMillis >= timeoutMillis) {
-            SecureLog.d(TAG, "Background lock timeout expired, locking vault");
+        backgroundLockRunnable = () -> {
+            SecureLog.d(TAG, "Background lock timeout expired, executing lock");
             performBackgroundLock();
-        } else {
-            SecureLog.d(TAG, "Background lock timeout not expired yet");
+        };
+        
+        backgroundLockHandler.postDelayed(backgroundLockRunnable, timeoutMillis);
+    }
+
+    /**
+     * Cancel the background lock timer if it's pending.
+     * Called when the user returns to the app before the timeout expires.
+     */
+    private void cancelBackgroundLockTimer() {
+        if (backgroundLockRunnable != null) {
+            SecureLog.d(TAG, "Cancelling pending background lock timer");
+            backgroundLockHandler.removeCallbacks(backgroundLockRunnable);
+            backgroundLockRunnable = null;
         }
     }
 
     /**
-     * Perform the background lock - locks the vault and clears memory cache.
-     * This is called when the background timer expires.
+     * Perform the background lock - locks the vault and closes the app.
+     * This is called when the background timer expires while the app is in background.
      */
     private void performBackgroundLock() {
-        NavHostFragment navHostFragment = (NavHostFragment) getSupportFragmentManager().findFragmentById(R.id.nav_host_fragment_content_main);
-        if (navHostFragment == null) {
-            return;
-        }
+        // Lock the vault
+        Password.lock(this, false);
         
-        NavController navController = navHostFragment.getNavController();
-        if (navController.getCurrentDestination() != null && 
-            navController.getCurrentDestination().getId() != R.id.password) {
-            
-            // Lock the vault (same as screen off lock)
-            Password.lock(this, false);
-            
-            // Restart the activity to ensure a completely clean state
-            // This avoids the ghost session issue where old navigation state persists
-            Intent intent = new Intent(this, MainActivity.class);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-            startActivity(intent);
-            finish();
-        }
+        // Completely close the app and remove from recents
+        // The user will need to reopen the app from the launcher
+        // which will show the password screen (since session is locked)
+        SecureLog.d(TAG, "Performing background lock - finishing and removing task");
+        finishAndRemoveTask();
     }
 
     private boolean isSystemApp(String packageName) {
@@ -349,39 +328,20 @@ public class MainActivity extends AppCompatActivity {
         NavController navController = navHostFragment.getNavController();
         if (navController.getCurrentDestination() != null && navController.getCurrentDestination().getId() != R.id.password) {
             Settings settings = Settings.getInstance(this);
-            if (settings.returnToLastApp()) {
-                SecureLog.d(TAG, "Auto-lock triggered - using user configured preferred app");
-            }
-
+            
             // Invalidate session and wipe sensitive memory
             Password.lock(this, false);
 
-            // Restart the activity in a clean state so the navigation will
-            // land on the password screen (see performBackgroundLock).
-            Intent intent = new Intent(this, MainActivity.class);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-            startActivity(intent);
-
             if (settings.returnToLastApp()) {
-                // Try to return to preferred/last app. Use a delayed handler to ensure
-                // the new activity has time to start before we finish this one.
-                // The delay also helps avoid race conditions with FLAG_ACTIVITY_CLEAR_TASK.
-                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                    try {
-                        returnToLastApp();
-                        finish();
-                    } catch (Exception e) {
-                        SecureLog.w(TAG, "Error finishing activity after returnToLastApp", e);
-                    }
-                }, RETURN_TO_APP_FINISH_DELAY_MS);
-            } else {
-                // Finish current activity instance (new one started will show password)
-                try {
-                    finish();
-                } catch (Exception e) {
-                    SecureLog.w(TAG, "Error finishing activity on screen off", e);
-                }
+                SecureLog.d(TAG, "Auto-lock triggered - returning to preferred app");
+                // Try to return to preferred/last app and close this app completely
+                returnToLastApp();
             }
+            
+            // Completely close the app and remove from recents
+            // The user will need to reopen the app from the launcher
+            // which will show the password screen (since session is locked)
+            finishAndRemoveTask();
         }
     }
 

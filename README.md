@@ -28,5 +28,29 @@ Read the full details in [ENCRYPTION.md](ENCRYPTION.md).
 ## Requirements
 - Android 9 or newer
 
+## Build
+
+### Android app
+
+Requirements:
+- JDK 17
+- Android SDK (API 28+)
+
+To build the debug APK:
+```sh
+./gradlew :app:assembleDebug
+```
+The APK will be generated at `app/build/outputs/apk/debug/`.
+
+To install directly on a connected device:
+```sh
+./gradlew :app:installDebug
+```
+
+To build a release APK:
+```sh
+./gradlew :app:assembleRelease
+```
+
 ## 
 This software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
