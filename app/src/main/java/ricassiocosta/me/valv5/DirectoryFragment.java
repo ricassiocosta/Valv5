@@ -254,7 +254,7 @@ public class DirectoryFragment extends DirectoryBaseFragment {
                             }
                         }
                         for (GalleryFile folder : selectedFolders) {
-                            // O nome da subpasta criptografada é o encryptedName
+                            // The encrypted subfolder name is the encryptedName
                             String encryptedName = folder.getEncryptedName();
                             DocumentFile docFolder = parentDir != null ? parentDir.findFile(encryptedName) : null;
                             if (docFolder != null && docFolder.isDirectory()) {
