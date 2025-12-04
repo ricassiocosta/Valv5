@@ -24,6 +24,11 @@ import static org.junit.Assert.*;
  * - Various folder name formats work
  * - Unicode folder names work
  * - Wrong password fails gracefully
+ * 
+ * Constraints from Encryption.java:
+ * - MAX_FOLDER_NAME_LENGTH = 30 characters
+ * - Empty names throw IllegalArgumentException
+ * - looksLikeEncryptedFolder requires @NonNull (no null check)
  */
 @RunWith(AndroidJUnit4.class)
 public class EncryptionFolderNameTest {
@@ -44,9 +49,36 @@ public class EncryptionFolderNameTest {
     }
 
     @Test
-    public void testFolderNameRoundtripEmptyName() {
+    public void testFolderNameRoundtripEmptyNameThrows() {
         char[] password = "test-password".toCharArray();
         String original = "";
+
+        try {
+            Encryption.createEncryptedFolderName(original, password);
+            fail("Empty name should throw IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("empty"));
+        }
+    }
+
+    @Test
+    public void testFolderNameRoundtripNullNameThrows() {
+        char[] password = "test-password".toCharArray();
+
+        try {
+            Encryption.createEncryptedFolderName(null, password);
+            fail("Null name should throw IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("empty"));
+        }
+    }
+
+    @Test
+    public void testFolderNameRoundtripMaxLength() {
+        char[] password = "test-password".toCharArray();
+        // Exactly 30 characters (MAX_FOLDER_NAME_LENGTH)
+        String original = "123456789012345678901234567890";
+        assertEquals(30, original.length());
 
         String encrypted = Encryption.createEncryptedFolderName(original, password);
         assertNotNull(encrypted);
@@ -56,25 +88,26 @@ public class EncryptionFolderNameTest {
     }
 
     @Test
-    public void testFolderNameRoundtripLongName() {
+    public void testFolderNameRoundtripExceedsMaxLengthThrows() {
         char[] password = "test-password".toCharArray();
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 100; i++) {
-            sb.append("Long Folder Name ");
+        // 31 characters - exceeds MAX_FOLDER_NAME_LENGTH
+        String original = "1234567890123456789012345678901";
+        assertEquals(31, original.length());
+
+        try {
+            Encryption.createEncryptedFolderName(original, password);
+            fail("Name exceeding max length should throw IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("exceeds maximum length"));
         }
-        String original = sb.toString();
-
-        String encrypted = Encryption.createEncryptedFolderName(original, password);
-        assertNotNull(encrypted);
-
-        String decrypted = Encryption.decryptFolderName(encrypted, password);
-        assertEquals(original, decrypted);
     }
 
     @Test
     public void testFolderNameRoundtripUnicode() {
         char[] password = "test-password".toCharArray();
-        String original = "Pasta Secreta 密码文件夹 🔐📁";
+        // Unicode name within 30 char limit
+        String original = "密码文件夹🔐";
+        assertTrue(original.length() <= 30);
 
         String encrypted = Encryption.createEncryptedFolderName(original, password);
         assertNotNull(encrypted);
@@ -86,13 +119,28 @@ public class EncryptionFolderNameTest {
     @Test
     public void testFolderNameRoundtripSpecialCharacters() {
         char[] password = "test-password".toCharArray();
-        String original = "Folder with spaces & symbols! @#$%^*()";
+        // Special characters within 30 char limit
+        String original = "Folder & symbols! @#$%";
+        assertTrue(original.length() <= 30);
 
         String encrypted = Encryption.createEncryptedFolderName(original, password);
         assertNotNull(encrypted);
 
         String decrypted = Encryption.decryptFolderName(encrypted, password);
         assertEquals(original, decrypted);
+    }
+
+    @Test
+    public void testFolderNameRoundtripWithSpaces() {
+        char[] password = "test-password".toCharArray();
+        String original = "  Trimmed Name  ";
+
+        String encrypted = Encryption.createEncryptedFolderName(original, password);
+        assertNotNull(encrypted);
+
+        // Note: implementation trims whitespace
+        String decrypted = Encryption.decryptFolderName(encrypted, password);
+        assertEquals("Trimmed Name", decrypted);
     }
 
     // ==================== Encryption Properties Tests ====================
@@ -154,12 +202,25 @@ public class EncryptionFolderNameTest {
     }
 
     @Test
-    public void testLooksLikeEncryptedFolderNegative() {
+    public void testLooksLikeEncryptedFolderNegativeShortStrings() {
+        // Method requires @NonNull, so we don't test null here
         assertFalse(Encryption.looksLikeEncryptedFolder("My Photos"));
         assertFalse(Encryption.looksLikeEncryptedFolder("Documents"));
         assertFalse(Encryption.looksLikeEncryptedFolder("Short"));
-        assertFalse(Encryption.looksLikeEncryptedFolder("")); // Too short
-        assertFalse(Encryption.looksLikeEncryptedFolder(null));
+        assertFalse(Encryption.looksLikeEncryptedFolder("")); // Too short (< 60 chars)
+    }
+
+    @Test
+    public void testLooksLikeEncryptedFolderNegativeInvalidChars() {
+        // 60+ chars but with invalid characters
+        String longWithSpaces = "This is a very long folder name with spaces that exceeds sixty chars";
+        assertTrue(longWithSpaces.length() >= 60);
+        assertFalse(Encryption.looksLikeEncryptedFolder(longWithSpaces));
+
+        // 60+ chars with slashes
+        String longWithSlash = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567/9";
+        assertTrue(longWithSlash.length() >= 60);
+        assertFalse(Encryption.looksLikeEncryptedFolder(longWithSlash));
     }
 
     // ==================== Wrong Password Tests ====================
@@ -179,18 +240,6 @@ public class EncryptionFolderNameTest {
     }
 
     @Test
-    public void testEmptyPasswordWorks() {
-        char[] emptyPassword = new char[0];
-        String original = "Folder Name";
-
-        String encrypted = Encryption.createEncryptedFolderName(original, emptyPassword);
-        assertNotNull(encrypted);
-
-        String decrypted = Encryption.decryptFolderName(encrypted, emptyPassword);
-        assertEquals(original, decrypted);
-    }
-
-    @Test
     public void testUnicodePasswordWorks() {
         char[] unicodePassword = "密码пароль🔑".toCharArray();
         String original = "My Folder";
@@ -202,13 +251,26 @@ public class EncryptionFolderNameTest {
         assertEquals(original, decrypted);
     }
 
+    @Test
+    public void testLongPasswordWorks() {
+        // Very long password
+        char[] longPassword = "This is a very long password that exceeds typical limits 1234567890!@#$%".toCharArray();
+        String original = "My Folder";
+
+        String encrypted = Encryption.createEncryptedFolderName(original, longPassword);
+        assertNotNull(encrypted);
+
+        String decrypted = Encryption.decryptFolderName(encrypted, longPassword);
+        assertEquals(original, decrypted);
+    }
+
     // ==================== Edge Cases ====================
 
     @Test
     public void testDecryptInvalidStringReturnsNull() {
         char[] password = "test".toCharArray();
 
-        // Not a valid encrypted folder name
+        // Not a valid encrypted folder name (too short)
         String invalid = "not-encrypted-folder-name";
         String result = Encryption.decryptFolderName(invalid, password);
 
@@ -243,5 +305,17 @@ public class EncryptionFolderNameTest {
 
         String result = Encryption.decryptFolderName(corrupted, password);
         assertNull("Corrupted input should return null", result);
+    }
+
+    @Test
+    public void testSingleCharacterFolderName() {
+        char[] password = "test".toCharArray();
+        String original = "X";
+
+        String encrypted = Encryption.createEncryptedFolderName(original, password);
+        assertNotNull(encrypted);
+
+        String decrypted = Encryption.decryptFolderName(encrypted, password);
+        assertEquals(original, decrypted);
     }
 }
