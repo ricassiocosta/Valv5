@@ -22,6 +22,8 @@ import android.content.Intent;
 import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -55,6 +57,7 @@ import androidx.recyclerview.widget.SimpleItemAnimator;
 import androidx.recyclerview.widget.StaggeredGridLayoutManager;
 import androidx.viewpager2.widget.ViewPager2;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -200,7 +203,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
 
         if (ab != null) {
             ab.setDisplayHomeAsUpEnabled(true);
-            ab.setTitle(isAllFolder ? getString(R.string.gallery_all) : FileStuff.getFilenameFromUri(galleryViewModel.getCurrentDirectoryUri(), false));
+            ab.setTitle(isAllFolder ? getString(R.string.gallery_all) : FileStuff.getDisplayNameFromUri(galleryViewModel.getCurrentDirectoryUri()));
             return true;
         }
         return false;
@@ -208,14 +211,11 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
 
     void initViewModels() {
         importViewModel.setOnImportDoneFragment((destinationUri, sameDirectory, importedCount, failedCount, thumbErrorCount, importedFiles) -> {
-            SecureLog.d(TAG, "setOnImportDoneFragment: sameDirectory=" + sameDirectory + ", " + SecureLog.safeCount(importedCount, "imported") + ", " + SecureLog.safeCount(failedCount, "failed"));
-
-            FragmentActivity activity = getActivity();
-            if (activity == null || activity.isDestroyed()) {
+            if (!isSafe()) {
                 return;
             }
-            activity.runOnUiThread(() -> {
-                Toaster.getInstance(activity).showLong(getString(R.string.gallery_selected_files_imported, importedCount));
+            new Handler(Looper.getMainLooper()).post(() -> {
+                Toaster.getInstance(requireContext()).showLong(getString(R.string.gallery_selected_files_imported, importedCount));
 
                 if (sameDirectory) { // files added to current directory
                     synchronized (LOCK) {
@@ -242,12 +242,11 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
 
         deleteViewModel.setOnDeleteDoneFragment(deletedFiles -> {
             SecureLog.d(TAG, "setOnDeleteDoneFragment: " + SecureLog.safeCount(deletedFiles.size(), "deleted"));
-            FragmentActivity activity = getActivity();
-            if (activity == null || activity.isDestroyed()) {
+            if (!isSafe()) {
                 return;
             }
-            activity.runOnUiThread(() -> {
-                Toaster.getInstance(activity).showLong(getString(R.string.gallery_selected_files_deleted, deletedFiles.size()));
+            new Handler(Looper.getMainLooper()).post(() -> {
+                Toaster.getInstance(requireContext()).showLong(getString(R.string.gallery_selected_files_deleted, deletedFiles.size()));
                 synchronized (LOCK) {
                     List<GalleryFile> galleryFiles = galleryViewModel.getGalleryFiles();
                     for (int i = galleryFiles.size() - 1; i >= 0; i--) {
@@ -267,36 +266,33 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
 
         exportViewModel.setOnDoneFragment(processedFiles -> {
             SecureLog.d(TAG, "setOnExportDoneFragment: " + SecureLog.safeCount(processedFiles.size(), "exported"));
-            FragmentActivity activity = getActivity();
-            if (activity == null || activity.isDestroyed()) {
+            if (!isSafe()) {
                 return;
             }
-            activity.runOnUiThread(() -> {
+            new Handler(Looper.getMainLooper()).post(() -> {
                 galleryGridAdapter.onSelectionModeChanged(false);
-                Toaster.getInstance(activity).showLong(getString(R.string.gallery_selected_files_exported, processedFiles.size()));
+                Toaster.getInstance(requireContext()).showLong(getString(R.string.gallery_selected_files_exported, processedFiles.size()));
             });
         });
 
         copyViewModel.setOnDoneFragment(processedFiles -> {
             SecureLog.d(TAG, "setOnDoneFragment: " + SecureLog.safeCount(processedFiles.size(), "copied"));
-            FragmentActivity activity = getActivity();
-            if (activity == null || activity.isDestroyed()) {
+            if (!isSafe()) {
                 return;
             }
-            activity.runOnUiThread(() -> {
+            new Handler(Looper.getMainLooper()).post(() -> {
                 galleryGridAdapter.onSelectionModeChanged(false);
-                Toaster.getInstance(activity).showLong(getString(R.string.gallery_selected_files_copied, processedFiles.size()));
+                Toaster.getInstance(requireContext()).showLong(getString(R.string.gallery_selected_files_copied, processedFiles.size()));
             });
         });
 
         moveViewModel.setOnDoneFragment(processedFiles -> {
             SecureLog.d(TAG, "setOnDoneFragment: " + SecureLog.safeCount(processedFiles.size(), "moved"));
-            FragmentActivity activity = getActivity();
-            if (activity == null || activity.isDestroyed()) {
+            if (!isSafe()) {
                 return;
             }
-            activity.runOnUiThread(() -> {
-                Toaster.getInstance(activity).showLong(getString(R.string.gallery_selected_files_moved, processedFiles.size()));
+            new Handler(Looper.getMainLooper()).post(() -> {
+                Toaster.getInstance(requireContext()).showLong(getString(R.string.gallery_selected_files_moved, processedFiles.size()));
                 if (galleryViewModel.isAllFolder()) {
                     return;
                 }
@@ -358,7 +354,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
             }
             // New logic ends here
 
-            activity.runOnUiThread(() -> {
+            new Handler(Looper.getMainLooper()).post(() -> {
                 setLoading(false);
                 synchronized (LOCK) {
                     if (galleryViewModel.isInitialised()) {
@@ -397,7 +393,9 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         binding.recyclerView.setItemViewCacheSize(20);
         binding.recyclerView.setHasFixedSize(true);
         
-        galleryGridAdapter = new GalleryGridAdapter(requireActivity(), galleryViewModel.getGalleryFiles(), settings.showFilenames(), galleryViewModel.isRootDir(), galleryViewModel);
+        synchronized (LOCK) {
+            galleryGridAdapter = new GalleryGridAdapter(requireActivity(), galleryViewModel.getGalleryFiles(), settings.showFilenames(), galleryViewModel.isRootDir(), galleryViewModel);
+        }
         galleryGridAdapter.setNestedPath(galleryViewModel.getNestedPath());
         galleryGridAdapter.setOnFileDeleted(pos -> galleryPagerAdapter.notifyItemRemoved(pos));
         binding.recyclerView.setAdapter(galleryGridAdapter);
@@ -408,10 +406,12 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     }
 
     private void initFastScroll() {
-        if (galleryViewModel.isInitialised()) {
-            binding.recyclerView.setFastScrollEnabled(galleryViewModel.getGalleryFiles().size() > MIN_FILES_FOR_FAST_SCROLL);
-        } else {
-            binding.recyclerView.setFastScrollEnabled(false);
+        synchronized (LOCK) {
+            if (galleryViewModel.isInitialised()) {
+                binding.recyclerView.setFastScrollEnabled(galleryViewModel.getGalleryFiles().size() > MIN_FILES_FOR_FAST_SCROLL);
+            } else {
+                binding.recyclerView.setFastScrollEnabled(false);
+            }
         }
     }
 
@@ -423,28 +423,30 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         if (fileUri == null) {
             return;
         }
-        List<GalleryFile> galleryFiles = galleryViewModel.getGalleryFiles();
-        for (int i = 0; i < galleryFiles.size(); i++) {
-            GalleryFile file = galleryFiles.get(i);
-            Uri uri = file.getUri();
-            if (!file.isDirectory() && uri != null && uri.equals(fileUri)) {
-                final int position = i;
-                // Use layout change listener to ensure the layout is ready before scrolling
-                binding.recyclerView.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
-                    @Override
-                    public void onLayoutChange(View v, int left, int top, int right, int bottom,
-                                              int oldLeft, int oldTop, int oldRight, int oldBottom) {
-                        binding.recyclerView.removeOnLayoutChangeListener(this);
-                        binding.recyclerView.scrollToPosition(position);
-                        // Fade-in highlight effect on the item
-                        RecyclerView.ViewHolder viewHolder = binding.recyclerView.findViewHolderForAdapterPosition(position);
-                        if (viewHolder != null && viewHolder.itemView != null) {
-                            viewHolder.itemView.setAlpha(0.5f);
-                            viewHolder.itemView.animate().alpha(1f).setDuration(HIGHLIGHT_ANIMATION_DURATION_MS).start();
+        synchronized (LOCK) {
+            List<GalleryFile> galleryFiles = galleryViewModel.getGalleryFiles();
+            for (int i = 0; i < galleryFiles.size(); i++) {
+                GalleryFile file = galleryFiles.get(i);
+                Uri uri = file.getUri();
+                if (!file.isDirectory() && uri != null && uri.equals(fileUri)) {
+                    final int position = i;
+                    // Use layout change listener to ensure the layout is ready before scrolling
+                    binding.recyclerView.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+                        @Override
+                        public void onLayoutChange(View v, int left, int top, int right, int bottom,
+                                                  int oldLeft, int oldTop, int oldRight, int oldBottom) {
+                            binding.recyclerView.removeOnLayoutChangeListener(this);
+                            binding.recyclerView.scrollToPosition(position);
+                            // Fade-in highlight effect on the item
+                            RecyclerView.ViewHolder viewHolder = binding.recyclerView.findViewHolderForAdapterPosition(position);
+                            if (viewHolder != null && viewHolder.itemView != null) {
+                                viewHolder.itemView.setAlpha(0.5f);
+                                viewHolder.itemView.animate().alpha(1f).setDuration(HIGHLIGHT_ANIMATION_DURATION_MS).start();
+                            }
                         }
-                    }
-                });
-                return;
+                    });
+                    return;
+                }
             }
         }
     }
@@ -452,8 +454,10 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     abstract void onSelectionModeChanged(boolean inSelectionMode);
 
     void setupViewpager() {
-        galleryPagerAdapter = new GalleryPagerAdapter(requireActivity(), galleryViewModel.getGalleryFiles(), pos -> galleryGridAdapter.notifyItemRemoved(pos), galleryViewModel.getCurrentDocumentDirectory(),
-                galleryViewModel.isAllFolder(), galleryViewModel.getNestedPath(), galleryViewModel);
+        synchronized (LOCK) {
+            galleryPagerAdapter = new GalleryPagerAdapter(requireActivity(), galleryViewModel.getGalleryFiles(), pos -> galleryGridAdapter.notifyItemRemoved(pos), galleryViewModel.getCurrentDocumentDirectory(),
+                    galleryViewModel.isAllFolder(), galleryViewModel.getNestedPath(), galleryViewModel);
+        }
         
         // Set "Go to folder" callback for "All items" view
         if (galleryViewModel.isAllFolder()) {
@@ -525,6 +529,10 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                 List<GalleryFile> galleryFiles = galleryViewModel.getGalleryFiles();
                 if (order == ORDER_BY_NEWEST) {
                     galleryFiles.sort((o1, o2) -> {
+                        // Directories always come first
+                        if (o1.isDirectory() && !o2.isDirectory()) return -1;
+                        if (!o1.isDirectory() && o2.isDirectory()) return 1;
+                        // Then sort by last modified (newest first)
                         if (o1.getLastModified() > o2.getLastModified()) {
                             return -1;
                         } else if (o1.getLastModified() < o2.getLastModified()) {
@@ -534,6 +542,10 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                     });
                 } else if (order == ORDER_BY_OLDEST) {
                     galleryFiles.sort((o1, o2) -> {
+                        // Directories always come first
+                        if (o1.isDirectory() && !o2.isDirectory()) return -1;
+                        if (!o1.isDirectory() && o2.isDirectory()) return 1;
+                        // Then sort by last modified (oldest first)
                         if (o1.getLastModified() > o2.getLastModified()) {
                             return 1;
                         } else if (o1.getLastModified() < o2.getLastModified()) {
@@ -543,6 +555,10 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                     });
                 } else if (order == ORDER_BY_LARGEST) {
                     galleryFiles.sort((o1, o2) -> {
+                        // Directories always come first
+                        if (o1.isDirectory() && !o2.isDirectory()) return -1;
+                        if (!o1.isDirectory() && o2.isDirectory()) return 1;
+                        // Then sort by size (largest first)
                         if (o1.getSize() > o2.getSize()) {
                             return -1;
                         } else if (o1.getSize() < o2.getSize()) {
@@ -552,6 +568,10 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                     });
                 } else if (order == ORDER_BY_SMALLEST) {
                     galleryFiles.sort((o1, o2) -> {
+                        // Directories always come first
+                        if (o1.isDirectory() && !o2.isDirectory()) return -1;
+                        if (!o1.isDirectory() && o2.isDirectory()) return 1;
+                        // Then sort by size (smallest first)
                         if (o1.getSize() > o2.getSize()) {
                             return 1;
                         } else if (o1.getSize() < o2.getSize()) {
@@ -560,9 +580,22 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                         return 0;
                     });
                 } else {
-                    Collections.shuffle(galleryFiles);
+                    // For random order, separate directories and files, shuffle files, then combine
+                    List<GalleryFile> directories = new ArrayList<>();
+                    List<GalleryFile> files = new ArrayList<>();
+                    for (GalleryFile f : galleryFiles) {
+                        if (f.isDirectory()) {
+                            directories.add(f);
+                        } else {
+                            files.add(f);
+                        }
+                    }
+                    Collections.shuffle(files);
+                    galleryFiles.clear();
+                    galleryFiles.addAll(directories);
+                    galleryFiles.addAll(files);
                 }
-                requireActivity().runOnUiThread(() -> {
+                new Handler(Looper.getMainLooper()).post(() -> {
                     synchronized (LOCK) {
                         galleryGridAdapter.notifyDataSetChanged();
                         galleryPagerAdapter.notifyDataSetChanged();
@@ -591,7 +624,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                             hiddenFiles.add(f);
                         }
                     }
-                    requireActivity().runOnUiThread(() -> {
+                    new Handler(Looper.getMainLooper()).post(() -> {
                         galleryGridAdapter.notifyDataSetChanged();
                         galleryPagerAdapter.notifyDataSetChanged();
                     });
@@ -635,6 +668,13 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                 menuInflater.inflate(R.menu.menu_root, menu);
             } else {
                 menuInflater.inflate(R.menu.menu_dir, menu);
+                // Hide create encrypted folder option when in "All Items" view
+                if (galleryViewModel.isAllFolder()) {
+                    MenuItem createFolderItem = menu.findItem(R.id.create_encrypted_folder);
+                    if (createFolderItem != null) {
+                        createFolderItem.setVisible(false);
+                    }
+                }
             }
         }
     }
@@ -688,6 +728,9 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
             return true;
         } else if (id == R.id.toggle_filename) {
             settings.setShowFilenames(galleryGridAdapter.toggleFilenames());
+            return true;
+        } else if (id == R.id.create_encrypted_folder) {
+            showCreateEncryptedFolderDialog();
             return true;
         } else if (id == R.id.select_all) {
             galleryGridAdapter.selectAll();
@@ -794,6 +837,125 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         showViewpager(false, galleryViewModel.getCurrentPosition(), false);
         
         navigateToParentFolder(fileUri);
+    }
+
+    /**
+     * Show dialog to create an encrypted folder in the current directory.
+     */
+    private void showCreateEncryptedFolderDialog() {
+        FragmentActivity activity = getActivity();
+        if (activity == null) {
+            return;
+        }
+        
+        Uri currentDirUri = galleryViewModel.getCurrentDirectoryUri();
+        if (currentDirUri == null) {
+            Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed));
+            return;
+        }
+        
+        Dialogs.showCreateEncryptedFolderDialog(activity, folderName -> {
+            if (folderName == null || folderName.isEmpty()) {
+                return;
+            }
+            
+            // Create encrypted folder in background
+            new Thread(() -> {
+                try {
+                    char[] password = Password.getInstance().getPassword();
+                    if (password == null) {
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            if (!isAdded() || getActivity() == null) {
+                                return;
+                            }
+                            Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed));
+                        });
+                        return;
+                    }
+                    
+                        // Navega do root até a subpasta usando nestedPath
+                        String rootDir = galleryViewModel.getDirectory();
+                        String nestedPath = galleryViewModel.getNestedPath();
+                        androidx.documentfile.provider.DocumentFile parentDir = 
+                                androidx.documentfile.provider.DocumentFile.fromTreeUri(requireContext(), Uri.parse(rootDir));
+                        if (parentDir != null && nestedPath != null && !nestedPath.isEmpty()) {
+                            String[] segments = nestedPath.split("/");
+                            for (String segment : segments) {
+                                if (segment != null && !segment.isEmpty()) {
+                                    androidx.documentfile.provider.DocumentFile found = parentDir.findFile(segment);
+                                    if (found != null && found.isDirectory()) {
+                                        parentDir = found;
+                                    }
+                                }
+                            }
+                        }
+                    if (parentDir == null || !parentDir.isDirectory()) {
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            if (!isAdded() || getActivity() == null) {
+                                return;
+                            }
+                            Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed));
+                        });
+                        return;
+                    }
+                    
+                    Uri newFolderUri = FileStuff.createEncryptedFolder(requireContext(), parentDir, folderName, password);
+                    
+                    if (newFolderUri != null) {
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            if (!isAdded() || getActivity() == null) {
+                                return;
+                            }
+                            Toaster.getInstance(requireContext()).showShort(
+                                    getString(R.string.dialog_create_folder_success, folderName));
+                            // Add the new folder to the gallery view
+                            GalleryFile newFolder = GalleryFile.asDirectory(newFolderUri);
+                            if (newFolder != null) {
+                                newFolder.setEncryptedFolder(true);
+                                newFolder.setDecryptedFolderName(folderName);
+                                synchronized (LOCK) {
+                                    galleryViewModel.getGalleryFiles().add(newFolder);
+                                    // Re-sort the list to maintain the current sort order
+                                    Collections.sort(galleryViewModel.getGalleryFiles());
+                                    galleryGridAdapter.notifyDataSetChanged();
+                                    galleryPagerAdapter.notifyDataSetChanged();
+                                }
+                            } else {
+                                Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed));
+                            }
+                        });
+                    } else {
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            if (!isAdded() || getActivity() == null) {
+                                return;
+                            }
+                            Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed));
+                        });
+                    }
+                } catch (IllegalArgumentException e) {
+                    SecureLog.e(TAG, "Invalid folder name", e);
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        if (!isAdded() || getActivity() == null) {
+                            return;
+                        }
+                        String message = e.getMessage();
+                        if (message != null && !message.isEmpty()) {
+                            Toaster.getInstance(requireContext()).showShort(message);
+                        } else {
+                            Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed));
+                        }
+                    });
+                } catch (Exception e) {
+                    SecureLog.e(TAG, "Error creating encrypted folder", e);
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        if (!isAdded() || getActivity() == null) {
+                            return;
+                        }
+                        Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed));
+                    });
+                }
+            }).start();
+        });
     }
 
     @Override

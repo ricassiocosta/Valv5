@@ -1,12 +1,13 @@
 package ricassiocosta.me.valv5.security;
 
+import android.util.Log;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.util.regex.Pattern;
 
 import ricassiocosta.me.valv5.BuildConfig;
-import ricassiocosta.me.valv5.security.SecureLog;
 
 /**
  * Secure logging wrapper that sanitizes sensitive data before logging.
@@ -118,7 +119,7 @@ public final class SecureLog {
      */
     public static int v(@NonNull String tag, @NonNull String msg) {
         if (!BuildConfig.DEBUG) return 0;
-        return SecureLog.v(tag, sanitize(msg));
+        return Log.v(tag, sanitize(msg));
     }
     
     /**
@@ -126,7 +127,7 @@ public final class SecureLog {
      */
     public static int v(@NonNull String tag, @NonNull String msg, @Nullable Throwable tr) {
         if (!BuildConfig.DEBUG) return 0;
-        return SecureLog.v(tag, sanitize(msg), sanitizeThrowable(tr));
+        return Log.v(tag, sanitize(msg), sanitizeThrowable(tr));
     }
     
     /**
@@ -137,7 +138,7 @@ public final class SecureLog {
      */
     public static int d(@NonNull String tag, @NonNull String msg) {
         if (!BuildConfig.DEBUG) return 0;
-        return SecureLog.d(tag, sanitize(msg));
+        return Log.d(tag, sanitize(msg));
     }
     
     /**
@@ -145,7 +146,7 @@ public final class SecureLog {
      */
     public static int d(@NonNull String tag, @NonNull String msg, @Nullable Throwable tr) {
         if (!BuildConfig.DEBUG) return 0;
-        return SecureLog.d(tag, sanitize(msg), sanitizeThrowable(tr));
+        return Log.d(tag, sanitize(msg), sanitizeThrowable(tr));
     }
     
     /**
@@ -156,7 +157,7 @@ public final class SecureLog {
      */
     public static int i(@NonNull String tag, @NonNull String msg) {
         if (!BuildConfig.DEBUG) return 0;
-        return SecureLog.i(tag, sanitize(msg));
+        return Log.i(tag, sanitize(msg));
     }
     
     /**
@@ -164,7 +165,7 @@ public final class SecureLog {
      */
     public static int i(@NonNull String tag, @NonNull String msg, @Nullable Throwable tr) {
         if (!BuildConfig.DEBUG) return 0;
-        return SecureLog.i(tag, sanitize(msg), sanitizeThrowable(tr));
+        return Log.i(tag, sanitize(msg), sanitizeThrowable(tr));
     }
     
     /**
@@ -175,7 +176,7 @@ public final class SecureLog {
      */
     public static int w(@NonNull String tag, @NonNull String msg) {
         if (!BuildConfig.DEBUG) return 0;
-        return SecureLog.w(tag, sanitize(msg));
+        return Log.w(tag, sanitize(msg));
     }
     
     /**
@@ -183,7 +184,7 @@ public final class SecureLog {
      */
     public static int w(@NonNull String tag, @NonNull String msg, @Nullable Throwable tr) {
         if (!BuildConfig.DEBUG) return 0;
-        return SecureLog.w(tag, sanitize(msg), sanitizeThrowable(tr));
+        return Log.w(tag, sanitize(msg), sanitizeThrowable(tr));
     }
     
     /**
@@ -191,7 +192,7 @@ public final class SecureLog {
      */
     public static int w(@NonNull String tag, @Nullable Throwable tr) {
         if (!BuildConfig.DEBUG) return 0;
-        return SecureLog.w(tag, sanitizeThrowable(tr));
+        return Log.w(tag, sanitizeThrowable(tr));
     }
     
     /**
@@ -202,7 +203,7 @@ public final class SecureLog {
      */
     public static int e(@NonNull String tag, @NonNull String msg) {
         if (!BuildConfig.DEBUG) return 0;
-        return SecureLog.e(tag, sanitize(msg));
+        return Log.e(tag, sanitize(msg));
     }
     
     /**
@@ -210,7 +211,7 @@ public final class SecureLog {
      */
     public static int e(@NonNull String tag, @NonNull String msg, @Nullable Throwable tr) {
         if (!BuildConfig.DEBUG) return 0;
-        return SecureLog.e(tag, sanitize(msg), sanitizeThrowable(tr));
+        return Log.e(tag, sanitize(msg), sanitizeThrowable(tr));
     }
     
     /**
@@ -218,7 +219,7 @@ public final class SecureLog {
      */
     public static int wtf(@NonNull String tag, @NonNull String msg) {
         if (!BuildConfig.DEBUG) return 0;
-        return SecureLog.wtf(tag, sanitize(msg));
+        return Log.wtf(tag, sanitize(msg));
     }
     
     /**
@@ -226,7 +227,7 @@ public final class SecureLog {
      */
     public static int wtf(@NonNull String tag, @NonNull String msg, @Nullable Throwable tr) {
         if (!BuildConfig.DEBUG) return 0;
-        return SecureLog.wtf(tag, sanitize(msg), sanitizeThrowable(tr));
+        return Log.wtf(tag, sanitize(msg), sanitizeThrowable(tr));
     }
     
     // ============================================================

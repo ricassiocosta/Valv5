@@ -60,6 +60,11 @@
         android:title="@string/menu_toggle_filename"
         app:showAsAction="ifRoom" />
     <item
+        android:id="@+id/create_encrypted_folder"
+        android:icon="@drawable/ic_outline_create_new_folder_24"
+        android:title="@string/gallery_create_encrypted_folder"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_settings"
         android:title="@string/settings"
         app:showAsAction="never" />

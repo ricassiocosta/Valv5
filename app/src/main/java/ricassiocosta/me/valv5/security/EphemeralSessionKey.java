@@ -110,8 +110,6 @@ public final class EphemeralSessionKey {
             }
             regenerateInternal();
         }
-        
-        SecureLog.d(TAG, "Session key regenerated, generation=" + generation.get());
     }
     
     /**

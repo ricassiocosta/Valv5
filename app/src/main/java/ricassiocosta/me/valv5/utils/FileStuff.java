@@ -49,6 +49,7 @@ import ricassiocosta.me.valv5.data.CursorFile;
 import ricassiocosta.me.valv5.data.GalleryFile;
 import ricassiocosta.me.valv5.data.Password;
 import ricassiocosta.me.valv5.encryption.Encryption;
+import ricassiocosta.me.valv5.encryption.FolderNameCache;
 import ricassiocosta.me.valv5.exception.InvalidPasswordException;
 import ricassiocosta.me.valv5.security.SecureLog;
 
@@ -119,7 +120,10 @@ public class FileStuff {
         // Process files and find their thumbnails/notes
         for (CursorFile file : documentFiles) {
             if (file.isDirectory()) {
-                galleryFiles.add(GalleryFile.asDirectory(file));
+                GalleryFile dir = GalleryFile.asDirectory(file);
+                // Try to decrypt folder name if it looks like an encrypted folder
+                tryDecryptFolderNameForGalleryFile(dir);
+                galleryFiles.add(dir);
                 continue;
             }
             
@@ -283,6 +287,102 @@ public class FileStuff {
         return s;
     }
 
+    /**
+     * Get the display name for a folder URI.
+     * If it's an encrypted folder, returns the decrypted name.
+     * Otherwise, returns the original folder name.
+     * 
+     * @param uri The folder URI
+     * @return The display name (decrypted if encrypted folder, or original name)
+     */
+    @NonNull
+    public static String getDisplayNameFromUri(@NonNull Uri uri) {
+        String folderName = getFilenameFromUri(uri, false);
+        return tryGetDecryptedFolderName(folderName);
+    }
+
+    /**
+     * Get the display path for a folder URI.
+     * Decrypts any encrypted folder names in the path.
+     * 
+     * @param uri The folder URI
+     * @return The display path with decrypted folder names
+     */
+    @NonNull
+    public static String getDisplayPathFromUri(@NonNull Uri uri) {
+        String path = getFilenameWithPathFromUri(uri);
+        return decryptPathFolderNames(path);
+    }
+
+    /**
+     * Try to decrypt a folder name if it looks like an encrypted folder.
+     * Returns the original name if decryption fails or it's not encrypted.
+     * 
+     * @param folderName The folder name to try to decrypt
+     * @return The decrypted name or the original name
+     */
+    @NonNull
+    public static String tryGetDecryptedFolderName(@NonNull String folderName) {
+        // Quick check - is it even a candidate for encrypted folder?
+        if (!Encryption.looksLikeEncryptedFolder(folderName)) {
+            return folderName;
+        }
+        
+        // Check cache first
+        FolderNameCache cache = FolderNameCache.getInstance();
+        String cachedName = cache.get(folderName);
+        if (cachedName != null) {
+            return cachedName;
+        }
+        
+        // Get password from current session
+        char[] password = Password.getInstance().getPassword();
+        if (password == null) {
+            return folderName;
+        }
+        
+        // Try to decrypt
+        String decryptedName = Encryption.decryptFolderName(folderName, password);
+        if (decryptedName != null) {
+            cache.put(folderName, decryptedName);
+            return decryptedName;
+        }
+        
+        // Decryption failed - return original name
+        return folderName;
+    }
+
+    /**
+     * Decrypt encrypted folder names within a path.
+     * 
+     * @param path The path potentially containing encrypted folder names
+     * @return The path with decrypted folder names
+     */
+    @NonNull
+    private static String decryptPathFolderNames(@NonNull String path) {
+        StringBuilder result = new StringBuilder();
+        int len = path.length();
+        int start = 0;
+        boolean first = true;
+        for (int i = 0; i <= len; i++) {
+            if (i == len || path.charAt(i) == '/') {
+                String part = path.substring(start, i);
+                if (!first) {
+                    result.append("/");
+                } else {
+                    first = false;
+                }
+                if (Encryption.looksLikeEncryptedFolder(part)) {
+                    result.append(tryGetDecryptedFolderName(part));
+                } else {
+                    result.append(part);
+                }
+                start = i + 1;
+            }
+        }
+        return result.toString();
+    }
+
     public static String getNameWithoutPrefix(@NonNull String encryptedName) {
         // V5 pattern: 32-char alphanumeric with no extension - return as-is
         if (!encryptedName.contains(".") && encryptedName.matches("[a-zA-Z0-9]{32}")) {
@@ -437,5 +537,115 @@ public class FileStuff {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Try to decrypt an encrypted folder name.
+     * If decryption succeeds, sets isEncryptedFolder=true and decryptedFolderName on the GalleryFile.
+     * If decryption fails (wrong password or not an encrypted folder), leaves the GalleryFile unchanged.
+     * 
+     * Uses in-memory cache to avoid expensive Argon2 key derivation for repeated folder names.
+     * Cache is cleared when password changes or app is closed.
+     * 
+     * @param folder The GalleryFile representing the folder
+     */
+    private static void tryDecryptFolderNameForGalleryFile(@NonNull GalleryFile folder) {
+        if (!folder.isDirectory()) {
+            return;
+        }
+        
+        String folderName = folder.getEncryptedName();
+        if (folderName == null) {
+            return;
+        }
+        
+        // Quick heuristic check - encrypted folder names are long base64url strings
+        if (!Encryption.looksLikeEncryptedFolder(folderName)) {
+            return;
+        }
+        
+        // Check cache first using the singleton FolderNameCache
+        FolderNameCache cache = FolderNameCache.getInstance();
+        String cachedResult = cache.get(folderName);
+        if (cachedResult != null) {
+            folder.setEncryptedFolder(true);
+            folder.setDecryptedFolderName(cachedResult);
+            return;
+        }
+        
+        // Get password from current session
+        char[] password = Password.getInstance().getPassword();
+        if (password == null) {
+            return;
+        }
+        
+        // Try to decrypt
+        String decryptedName = Encryption.decryptFolderName(folderName, password);
+        
+        // Cache the result if decryption succeeded
+        if (decryptedName != null) {
+            cache.put(folderName, decryptedName);
+            folder.setEncryptedFolder(true);
+            folder.setDecryptedFolderName(decryptedName);
+        }
+        // If decryption fails, folder remains as a regular folder with original name
+    }
+    
+    /**
+     * Clear the decrypted folder name cache.
+     * Call this when password changes or app goes to background.
+     */
+    public static void clearDecryptedFolderCache() {
+        FolderNameCache.getInstance().clear();
+    }
+
+    /**
+     * Create an encrypted folder in the specified parent directory.
+     * 
+     * @param context The Android context
+     * @param parentDirectory The parent directory to create the folder in
+     * @param originalName The original folder name (max 30 characters)
+     * @param password The user's password
+     * @return The URI of the created folder, or null on error
+     * @throws IllegalArgumentException if originalName exceeds 30 characters
+     */
+    @Nullable
+    public static Uri createEncryptedFolder(Context context, @NonNull DocumentFile parentDirectory, 
+            @NonNull String originalName, @NonNull char[] password) {
+        if (originalName.length() > Encryption.MAX_FOLDER_NAME_LENGTH) {
+            throw new IllegalArgumentException("Folder name exceeds maximum length of " + Encryption.MAX_FOLDER_NAME_LENGTH);
+        }
+        
+        // Create encrypted folder name
+        String encryptedName = Encryption.createEncryptedFolderName(originalName, password);
+        if (encryptedName == null) {
+            SecureLog.e(TAG, "createEncryptedFolder: Failed to encrypt folder name");
+            return null;
+        }
+        
+        // Create the directory using SAF
+        DocumentFile newFolder = parentDirectory.createDirectory(encryptedName);
+        if (newFolder == null) {
+            SecureLog.e(TAG, "createEncryptedFolder: Failed to create directory");
+            return null;
+        }
+        
+        return newFolder.getUri();
+    }
+
+    /**
+     * Recursively deletes a DocumentFile and all its contents.
+     * @param file The DocumentFile to delete
+     * @return true if all deletions succeeded
+     */
+    public static boolean deleteDocumentFileRecursive(@NonNull DocumentFile file) {
+        boolean success = true;
+        if (file.isDirectory()) {
+            for (DocumentFile child : file.listFiles()) {
+                success &= deleteDocumentFileRecursive(child);
+            }
+        }
+        success &= file.delete();
+        return success;
     }
 }

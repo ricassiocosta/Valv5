@@ -5,6 +5,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
 
 import ricassiocosta.me.valv5.security.SecureLog;
@@ -110,8 +113,6 @@ public class DirectoryFragment extends DirectoryBaseFragment {
         }
         
         galleryViewModel.setAllFolder(false);
-        SecureLog.d(TAG, "init: directory: " + SecureLog.redactPath(galleryViewModel.getDirectory()));
-        SecureLog.d(TAG, "init: nested path: " + SecureLog.redactPath(galleryViewModel.getNestedPath()));
         if (galleryViewModel.getCurrentDirectoryUri() != null) {
             galleryViewModel.setRootDir(false);
             if (!initActionBar(false)) { // getSupportActionBar() is null directly after orientation change
@@ -232,12 +233,63 @@ public class DirectoryFragment extends DirectoryBaseFragment {
             if (galleryViewModel.isRootDir()) {
                 onRemoveFolderClicked(context);
             } else {
-                deleteViewModel.getFilesToDelete().clear();
-                deleteViewModel.getFilesToDelete().addAll(galleryGridAdapter.getSelectedFiles());
-
-                BottomSheetDeleteFragment bottomSheetDeleteFragment = new BottomSheetDeleteFragment();
-                FragmentManager childFragmentManager = getChildFragmentManager();
-                bottomSheetDeleteFragment.show(childFragmentManager, null);
+                // Subfolder deletion: only allowed if folders or files are selected
+                List<GalleryFile> selectedItems = galleryGridAdapter.getSelectedFiles();
+                if (!selectedItems.isEmpty()) {
+                    // Determine if we're deleting files or folders based on the first item
+                    boolean isDeletingFolders = selectedItems.get(0).isDirectory();
+                    
+                    int dialogTitleId = isDeletingFolders ? R.string.dialog_delete_subfolder_title : R.string.dialog_delete_files_title;
+                    String dialogMessage = isDeletingFolders ? 
+                        getString(R.string.dialog_delete_subfolder_message) :
+                        getResources().getQuantityString(R.plurals.dialog_delete_files_message, selectedItems.size(), selectedItems.size());
+                    
+                    Dialogs.showConfirmationDialog(context, getString(dialogTitleId),
+                            dialogMessage, (dialog, which) -> {
+                        if (isDeletingFolders) {
+                            // Delete folders
+                            String rootDirPath = galleryViewModel.getDirectory();
+                            String nestedPath = galleryViewModel.getNestedPath();
+                            DocumentFile parentDir = DocumentFile.fromTreeUri(context, Uri.parse(rootDirPath));
+                            if (parentDir != null && nestedPath != null && !nestedPath.isEmpty()) {
+                                String[] segments = nestedPath.split("/");
+                                for (String segment : segments) {
+                                    if (segment != null && !segment.isEmpty()) {
+                                        DocumentFile found = parentDir.findFile(segment);
+                                        if (found != null && found.isDirectory()) {
+                                            parentDir = found;
+                                        }
+                                    }
+                                }
+                            }
+                            for (GalleryFile folder : selectedItems) {
+                                String encryptedName = folder.getEncryptedName();
+                                DocumentFile docFolder = parentDir != null ? parentDir.findFile(encryptedName) : null;
+                                if (docFolder != null && docFolder.isDirectory()) {
+                                    FileStuff.deleteDocumentFileRecursive(docFolder);
+                                }
+                                int i = galleryViewModel.getGalleryFiles().indexOf(folder);
+                                if (i >= 0) {
+                                    galleryViewModel.getGalleryFiles().remove(i);
+                                    galleryGridAdapter.notifyItemRemoved(i);
+                                }
+                            }
+                            galleryGridAdapter.onSelectionModeChanged(false);
+                        } else {
+                            // Delete files using deleteViewModel
+                            deleteViewModel.getFilesToDelete().clear();
+                            deleteViewModel.getFilesToDelete().addAll(selectedItems);
+                            
+                            // Calculate total bytes to delete
+                            long totalBytes = 0;
+                            for (GalleryFile file : selectedItems) {
+                                totalBytes += file.getSize();
+                            }
+                            deleteViewModel.setTotalBytes(totalBytes);
+                            deleteViewModel.startDelete(context);
+                        }
+                    });
+                }
             }
         });
         binding.fabImportMedia.setOnClickListener(v -> {
@@ -342,7 +394,7 @@ public class DirectoryFragment extends DirectoryBaseFragment {
         settings.addGalleryDirectory(documentFile.getUri(), asRootDir, new IOnDirectoryAdded() {
             @Override
             public void onAddedAsRoot() {
-                Toaster.getInstance(context).showLong(getString(R.string.gallery_added_folder, FileStuff.getFilenameWithPathFromUri(uri)));
+                Toaster.getInstance(context).showLong(getString(R.string.gallery_added_folder, FileStuff.getDisplayPathFromUri(uri)));
                 Uri directoryUri = documentFile.getUri();
                 //List<GalleryFile> galleryFiles = FileStuff.getFilesInFolder(context, directoryUri);
 
@@ -357,12 +409,12 @@ public class DirectoryFragment extends DirectoryBaseFragment {
 
             @Override
             public void onAdded() {
-                Toaster.getInstance(context).showLong(getString(R.string.gallery_added_folder, FileStuff.getFilenameWithPathFromUri(uri)));
+                Toaster.getInstance(context).showLong(getString(R.string.gallery_added_folder, FileStuff.getDisplayPathFromUri(uri)));
             }
 
             @Override
             public void onAlreadyExists() {
-                Toaster.getInstance(context).showLong(getString(R.string.gallery_added_folder, FileStuff.getFilenameWithPathFromUri(uri)));
+                Toaster.getInstance(context).showLong(getString(R.string.gallery_added_folder, FileStuff.getDisplayPathFromUri(uri)));
                 if (asRootDir) {
                     addRootFolders();
                 }
@@ -435,5 +487,50 @@ public class DirectoryFragment extends DirectoryBaseFragment {
     public void onStart() {
         super.onStart();
         checkSharedData();
+    }
+
+    @Override
+    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+        if (galleryViewModel.isRootDir()) {
+            inflater.inflate(R.menu.menu_main_selection_dir, menu);
+        } else {
+            inflater.inflate(R.menu.menu_main_selection_subfolder, menu);
+        }
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        if (item.getItemId() == R.id.delete_subfolder) {
+            Dialogs.showConfirmationDialog(requireContext(), getString(R.string.dialog_delete_subfolder_title),
+                    getString(R.string.dialog_delete_subfolder_message), (dialog, which) -> {
+                deleteCurrentSubfolder();
+            });
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
+    private void deleteCurrentSubfolder() {
+        String rootDir = galleryViewModel.getDirectory();
+        String nestedPath = galleryViewModel.getNestedPath();
+        androidx.documentfile.provider.DocumentFile parentDir = 
+                androidx.documentfile.provider.DocumentFile.fromTreeUri(requireContext(), Uri.parse(rootDir));
+        if (parentDir != null && nestedPath != null && !nestedPath.isEmpty()) {
+            String[] segments = nestedPath.split("/");
+            for (int i = 0; i < segments.length; i++) {
+                String segment = segments[i];
+                if (segment != null && !segment.isEmpty()) {
+                    androidx.documentfile.provider.DocumentFile found = parentDir.findFile(segment);
+                    if (found != null && found.isDirectory()) {
+                        if (i == segments.length - 1) {
+                            FileStuff.deleteDocumentFileRecursive(found);
+                            navController.popBackStack();
+                        } else {
+                            parentDir = found;
+                        }
+                    }
+                }
+            }
+        }
     }
 }

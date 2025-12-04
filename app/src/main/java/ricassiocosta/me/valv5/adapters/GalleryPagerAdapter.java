@@ -663,7 +663,7 @@ public class GalleryPagerAdapter extends RecyclerView.Adapter<GalleryPagerViewHo
                     Encryption.IOnUriResult result = new Encryption.IOnUriResult() {
                         @Override
                         public void onUriResult(Uri outputUri) {
-                            context.runOnUiThread(() -> Toaster.getInstance(context).showLong(context.getString(R.string.gallery_file_exported, FileStuff.getFilenameWithPathFromUri(outputUri))));
+                            context.runOnUiThread(() -> Toaster.getInstance(context).showLong(context.getString(R.string.gallery_file_exported, FileStuff.getDisplayPathFromUri(outputUri))));
                         }
 
                         @Override

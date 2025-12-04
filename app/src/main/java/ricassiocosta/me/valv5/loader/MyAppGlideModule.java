@@ -27,12 +27,21 @@ import com.bumptech.glide.Glide;
 import com.bumptech.glide.GlideBuilder;
 import com.bumptech.glide.Registry;
 import com.bumptech.glide.annotation.GlideModule;
-import com.bumptech.glide.load.engine.cache.InternalCacheDiskCacheFactory;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.module.AppGlideModule;
+import com.bumptech.glide.request.RequestOptions;
 
+import java.io.File;
 import java.io.InputStream;
 
 import ricassiocosta.me.valv5.data.EncryptedFile;
+import com.bumptech.glide.load.Options;
+import com.bumptech.glide.load.engine.Resource;
+import com.bumptech.glide.load.resource.drawable.DrawableResource;
+import com.bumptech.glide.load.resource.bitmap.BitmapResource;
+import android.graphics.Bitmap;
+import android.graphics.drawable.Drawable;
+import com.bumptech.glide.load.Encoder;
 
 @GlideModule
 public class MyAppGlideModule extends AppGlideModule {
@@ -40,13 +49,33 @@ public class MyAppGlideModule extends AppGlideModule {
     @Override
     public void registerComponents(@NonNull Context context, @NonNull Glide glide, @NonNull Registry registry) {
         registry.prepend(EncryptedFile.class, InputStream.class, new EncryptedFileModelLoaderFactory(context));
+        
+        // Prevent any encrypted/decrypted data from being written to disk cache
+        // This ensures security by rejecting ALL disk write attempts
+        registry.prepend(Bitmap.class, new Encoder<Bitmap>() {
+            @Override
+            public boolean encode(@NonNull Bitmap data, @NonNull File file, @NonNull Options options) {
+                return false; // Reject all disk writes
+            }
+        });
+        
+        registry.prepend(Drawable.class, new Encoder<Drawable>() {
+            @Override
+            public boolean encode(@NonNull Drawable data, @NonNull File file, @NonNull Options options) {
+                return false; // Reject all disk writes
+            }
+        });
     }
 
     @Override
     public void applyOptions(@NonNull Context context, @NonNull GlideBuilder builder) {
         builder.setLogLevel(Log.ERROR);
-        // Disable disk cache completely for security - no decrypted data should be written to disk
-        builder.setDiskCache(new InternalCacheDiskCacheFactory(context, 0));
+        // Disable disk cache globally for security - no decrypted data should be written to disk
+        // Memory cache is safe as it is cleared when the app is closed or locked
+        builder.setDefaultRequestOptions(
+                new RequestOptions()
+                        .diskCacheStrategy(DiskCacheStrategy.NONE)
+        );
         super.applyOptions(context, builder);
     }
 }

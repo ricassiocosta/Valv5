@@ -12,6 +12,8 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
 
+import com.bumptech.glide.Glide;
+
 import ricassiocosta.me.valv5.security.SecureLog;
 
 
@@ -154,14 +156,30 @@ public class MainActivity extends AppCompatActivity {
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
         
-        // When system is low on memory or app goes to background, clean sensitive data
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
-            SecureMemoryManager.getInstance().wipeAll();
+        // Note: TRIM_MEMORY_UI_HIDDEN is called when app goes to background
+        // To reduce risk, wipe non-essential sensitive data here while preserving session key/password.
+        // The autolock feature (checkBackgroundLockTimeout) still handles locking after timeout.
+        // SECURITY WARNING: Sensitive data may remain in memory while the app is backgrounded,
+        // depending on the autolock timeout. If autolock is disabled or set to a long timeout,
+        // sensitive data may be exposed in memory. Users should be warned of this risk in settings.
+        if (level == ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            SecureLog.d(TAG, "App backgrounded, performing partial sensitive data cleanup");
+            // This should wipe non-essential sensitive data (e.g., decrypted caches, temp buffers)
+            // but preserve session key/password for quick resume.
+            SecureMemoryManager.getInstance().performPartialCleanup(this); // Implement this method as needed
         }
-        
-        // If system is critically low on memory, perform full cleanup
+        // Only perform full cleanup when system is critically low on memory
         if (level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE) {
+            SecureLog.d(TAG, "Critical memory pressure, performing full cleanup");
             SecureMemoryManager.getInstance().performFullCleanup(this);
+        } else if (level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
+            // Moderate memory pressure - clear only non-essential caches
+            SecureLog.d(TAG, "Moderate memory pressure, clearing Glide cache only");
+            try {
+                Glide.get(this).clearMemory();
+            } catch (Exception e) {
+                SecureLog.w(TAG, "Failed to clear Glide memory cache", e);
+            }
         }
     }
 

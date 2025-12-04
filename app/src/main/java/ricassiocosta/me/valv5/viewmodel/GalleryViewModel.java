@@ -102,7 +102,6 @@ public class GalleryViewModel extends ViewModel {
             currentDirectoryUri = null;
             currentDocumentDirectory = null;
         }
-        SecureLog.d(TAG, "currentDocumentDirectory: " + (currentDocumentDirectory != null ? "set" : "null"));
     }
 
     public void setRootDir(boolean rootDir) {

@@ -101,6 +101,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
     private boolean showFileNames, selectMode;
     private int lastSelectedPos;
     private String nestedPath;
+    private boolean firstSelectedIsDirectory = false; // Track if first selected item is a directory
 
     private final WeakReference<FragmentActivity> weakReference;
     private final List<GalleryFile> galleryFiles;
@@ -410,10 +411,22 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                     Navigation.findNavController(holder.binding.layout).navigate(R.id.action_directory_to_directory_all);
                 }
             } else if (selectMode) {
-                if (isRootDir || !galleryFile.isDirectory()) {
+                // Allow selecting any folder except "All"
+                if (!galleryFile.isAllFolder()) {
                     if (!selectedFiles.contains(galleryFile)) {
-                        selectedFiles.add(galleryFile);
-                        lastSelectedPos = pos;
+                        // Check if the item type matches the first selected item
+                        boolean isCurrentDirectory = galleryFile.isDirectory();
+                        if (selectedFiles.isEmpty()) {
+                            // First item being selected
+                            firstSelectedIsDirectory = isCurrentDirectory;
+                            selectedFiles.add(galleryFile);
+                            lastSelectedPos = pos;
+                        } else if (isCurrentDirectory == firstSelectedIsDirectory) {
+                            // Same type as first selected item, allow selection
+                            selectedFiles.add(galleryFile);
+                            lastSelectedPos = pos;
+                        }
+                        // If different type, do nothing (don't add to selected files)
                     } else {
                         selectedFiles.remove(galleryFile);
                         if (selectedFiles.isEmpty()) {
@@ -453,19 +466,28 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             }
         });
         holder.binding.layout.setOnLongClickListener(v -> {
-            if (!galleryFile.isAllFolder() && (isRootDir || !galleryFile.isDirectory())) {
+            // Allow selecting any folder except "All"
+            if (!galleryFile.isAllFolder()) {
                 int pos = holder.getBindingAdapterPosition();
                 if (!selectMode) {
                     setSelectMode(true);
+                    firstSelectedIsDirectory = galleryFile.isDirectory();
                     holder.binding.layout.performClick();
                 } else {
                     if (lastSelectedPos >= 0 && !selectedFiles.contains(galleryFile)) {
+                        // Check if the item type matches the first selected item
+                        boolean isCurrentDirectory = galleryFile.isDirectory();
+                        if (isCurrentDirectory != firstSelectedIsDirectory) {
+                            // Different type, don't allow range selection
+                            return true;
+                        }
+                        
                         int minPos = Math.min(pos, lastSelectedPos);
                         int maxPos = Math.max(pos, lastSelectedPos);
                         if (minPos >= 0 && maxPos < galleryFiles.size()) {
                             for (int i = minPos; i >= 0 && i <= maxPos && i < galleryFiles.size(); i++) {
                                 GalleryFile gf = galleryFiles.get(i);
-                                if (gf != null && !selectedFiles.contains(gf)) {
+                                if (gf != null && !selectedFiles.contains(gf) && gf.isDirectory() == firstSelectedIsDirectory) {
                                     selectedFiles.add(gf);
                                 }
                             }
@@ -479,9 +501,9 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                         holder.binding.layout.performClick();
                     }
                 }
-                lastSelectedPos = pos;
+                return true;
             }
-            return true;
+            return false;
         });
     }
 
@@ -548,6 +570,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
             selectMode = false;
             lastSelectedPos = -1;
             selectedFiles.clear();
+            firstSelectedIsDirectory = false; // Reset the flag
             notifyItemRangeChanged(0, galleryFiles.size(), new Payload(Payload.TYPE_SELECT_ALL));
         }
         if (onSelectionModeChanged != null) {
@@ -556,12 +579,34 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
     }
 
     private void updateSelectedView(GalleryGridViewHolder holder, GalleryFile galleryFile) {
-        if (!galleryFile.isAllFolder() && selectMode && (isRootDir || !galleryFile.isDirectory())) {
-            holder.binding.checked.setVisibility(View.VISIBLE);
-            holder.binding.checked.setChecked(selectedFiles.contains(galleryFile));
-        } else {
+        boolean isSelected = !galleryFile.isAllFolder() && selectMode && selectedFiles.contains(galleryFile);
+        
+        // Check if item can be selected (either in root dir or any directory in subfolders)
+        boolean canBeSelected = !galleryFile.isAllFolder();
+        
+        if (canBeSelected && selectMode) {
+            // Show selection UI
+            if (isSelected) {
+                // Item is selected: show dark overlay and selection icon
+                holder.binding.selectionOverlay.setVisibility(View.VISIBLE);
+                holder.binding.selectionOverlay.setAlpha(0.6f); // 60% opacity for dark effect
+                holder.binding.selectionIcon.setVisibility(View.VISIBLE);
+                // Apply darkness to the image/content
+                holder.binding.imageView.setAlpha(0.4f);
+            } else {
+                // Item is not selected in selection mode: hide overlays
+                holder.binding.selectionOverlay.setVisibility(View.GONE);
+                holder.binding.selectionIcon.setVisibility(View.GONE);
+                holder.binding.imageView.setAlpha(1.0f);
+            }
+            // Hide the old checkbox
             holder.binding.checked.setVisibility(View.GONE);
-            holder.binding.checked.setChecked(false);
+        } else {
+            // Not in selection mode or cannot be selected
+            holder.binding.selectionOverlay.setVisibility(View.GONE);
+            holder.binding.selectionIcon.setVisibility(View.GONE);
+            holder.binding.imageView.setAlpha(1.0f);
+            holder.binding.checked.setVisibility(View.GONE);
         }
     }
 
@@ -805,5 +850,15 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
     @NonNull
     public List<GalleryFile> getSelectedFiles() {
         return selectedFiles;
+    }
+
+    public List<GalleryFile> getSelectedFolders() {
+        List<GalleryFile> folders = new ArrayList<>();
+        for (GalleryFile g : selectedFiles) {
+            if (g.isDirectory()) {
+                folders.add(g);
+            }
+        }
+        return folders;
     }
 }

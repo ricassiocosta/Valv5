@@ -40,10 +40,12 @@ public class Password {
     }
 
     public void setPassword(char[] password) {
-        // Register the new password with SecureMemoryManager for cleanup
-        if (password != null) {
-            SecureMemoryManager.getInstance().register(password);
-        }
+        // Note: The password is intentionally NOT registered with SecureMemoryManager here
+        // because it must persist during the entire session for folder decryption and file operations.
+        // Security trade-off: The password remains in memory while the app is backgrounded.
+        // However, it is securely wiped in clear() when the vault is explicitly locked.
+        // If stronger security is needed (wipe on background), consider implementing a
+        // "persistent buffer" mechanism in SecureMemoryManager that excludes from partial cleanup.
         this.password = password;
     }
 
@@ -85,6 +87,9 @@ public class Password {
             settings.deleteDirHashEntry(p.dirHash.salt(), p.dirHash.hash());
         }
         p.clear();
+        
+        // Clear encrypted folder name cache
+        ricassiocosta.me.valv5.encryption.FolderNameCache.getInstance().clear();
         
         // Destroy ephemeral session key - invalidates all cached data
         EphemeralSessionKey.getInstance().destroy();

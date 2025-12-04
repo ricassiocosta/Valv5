@@ -78,7 +78,7 @@ public class BottomSheetImportFragment extends BottomSheetDialogFragment {
                 for (GalleryFile galleryFile : importViewModel.getTextToImport()) {
                     bytes += galleryFile.getSize();
                 }
-                doImport(bytes, uri, FileStuff.getFilenameWithPathFromUri(uri), binding.checkboxDeleteAfter.isChecked(), pickedDirectory,
+                doImport(bytes, uri, FileStuff.getDisplayPathFromUri(uri), binding.checkboxDeleteAfter.isChecked(), pickedDirectory,
                         importViewModel.getCurrentDirectoryUri() != null && uri.toString().equals(importViewModel.getCurrentDirectoryUri().toString()));
             }
         }
@@ -118,13 +118,13 @@ public class BottomSheetImportFragment extends BottomSheetDialogFragment {
 
         final boolean hasUri = importViewModel.getCurrentDirectoryUri() != null;
         binding.title.setText(getResources().getQuantityString(R.plurals.import_modal_title, totalSize, totalSize, StringStuff.bytesToReadableString(bytes)));
-        String currentName = hasUri ? FileStuff.getFilenameWithPathFromUri(importViewModel.getCurrentDirectoryUri()) : null;
+        String currentName = hasUri ? FileStuff.getDisplayPathFromUri(importViewModel.getCurrentDirectoryUri()) : null;
         if (hasUri) {
             names.add(currentName);
         }
 
         for (int i = 0; i < directories.size(); i++) {
-            names.add(FileStuff.getFilenameWithPathFromUri(directories.get(i)));
+            names.add(FileStuff.getDisplayPathFromUri(directories.get(i)));
         }
 
         setupRecyclerView(names, context, currentName, bytes, hasUri, directories, settings);
