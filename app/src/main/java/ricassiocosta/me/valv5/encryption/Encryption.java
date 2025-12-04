@@ -105,13 +105,12 @@ import ricassiocosta.me.valv5.security.SecureLog;
 
 public class Encryption {
     private static final String TAG = "Encryption";
-    private static final String CIPHER_LEGACY = "ChaCha20/NONE/NoPadding";
     private static final String CIPHER_AEAD = "ChaCha20-Poly1305";
     private static final String KEY_ALGORITHM = "PBKDF2withHmacSHA512";
     private static final int KEY_LENGTH = 256;
     public static final int SALT_LENGTH = 16;
     private static final int IV_LENGTH = 12;
-    private static final int CHECK_LENGTH = 12;
+    // Legacy check bytes removed. V5 uses AEAD or SecretStream modes only.
     private static final int POLY1305_TAG_LENGTH = 16;
     
     // Maximum file size for AEAD mode (in bytes)
@@ -1039,9 +1038,19 @@ public class Encryption {
     }
 
     private static void createTextFile(FragmentActivity context, String input, DocumentFile outputFile, char[] password, String sourceFileName, int version, int fileType, ContentType contentType, @Nullable RelatedFile[] relatedFiles) throws GeneralSecurityException, IOException, JSONException {
-        Streams streams = getTextCipherOutputStream(context, input, outputFile, password, sourceFileName, version, fileType, contentType, relatedFiles);
-        streams.outputStream.write(streams.inputString.getBytes(StandardCharsets.UTF_8));
-        streams.close();
+        // Create V5 composite file containing the text as the main FILE section
+        byte[] bytes = input != null ? input.getBytes(StandardCharsets.UTF_8) : new byte[0];
+        ByteArrayInputStream bais = new ByteArrayInputStream(bytes);
+        try {
+            writeCompositeFile(context, bais, bytes.length, null, 0, null, outputFile, password, sourceFileName, fileType);
+        } finally {
+            // Wipe temporary plaintext bytes
+            Arrays.fill(bytes, (byte) 0);
+            try {
+                bais.close();
+            } catch (IOException ignored) {
+            }
+        }
     }
 
     private static void createThumb(FragmentActivity context, Uri input, DocumentFile outputThumbFile, char[] password, String sourceFileName, int version) throws GeneralSecurityException, IOException, ExecutionException, InterruptedException, JSONException {
@@ -1118,8 +1127,8 @@ public class Encryption {
             // AEAD mode: ChaCha20-Poly1305
             return decryptAEAD(inputStream, secretKey, versionBytes, salt, ivBytes, iterationCountBytes, DETECTED_VERSION);
         } else {
-            // Legacy mode: ChaCha20 with check bytes
-            return decryptLegacy(inputStream, secretKey, ivBytes, password, salt, ITERATION_COUNT, DETECTED_VERSION);
+            // Legacy modes removed: only AEAD and SecretStream within V5 are supported
+            throw new IOException("Unsupported V5 file mode: legacy encryption removed; only AEAD and SecretStream are supported");
         }
     }
     
@@ -1237,60 +1246,7 @@ public class Encryption {
      * Decrypt using legacy ChaCha20 with check bytes.
      * For backwards compatibility with files encrypted before AEAD migration.
      */
-    private static Streams decryptLegacy(
-            InputStream inputStream,
-            SecretKey secretKey,
-            byte[] ivBytes,
-            char[] password,
-            byte[] salt,
-            int iterationCount,
-            int detectedVersion) throws IOException, GeneralSecurityException, InvalidPasswordException, JSONException {
-        
-        byte[] checkBytes1 = new byte[CHECK_LENGTH];
-        byte[] checkBytes2 = new byte[CHECK_LENGTH];
-        
-        // Read check bytes from header
-        inputStream.read(checkBytes1);
-
-        IvParameterSpec ivParameterSpec = new IvParameterSpec(ivBytes);
-
-        Cipher cipher = Cipher.getInstance(CIPHER_LEGACY);
-        cipher.init(Cipher.DECRYPT_MODE, secretKey, ivParameterSpec);
-        CipherInputStream cipherInputStream = new MyCipherInputStream(inputStream, cipher);
-
-        cipherInputStream.read(checkBytes2);
-        if (!Arrays.equals(checkBytes1, checkBytes2)) {
-            throw new InvalidPasswordException("Invalid password");
-        }
-
-        // V5: Return CompositeStreams for V5 files
-        if (detectedVersion >= ENCRYPTION_VERSION_5) {
-            // V5 files have sections instead of plaintext metadata
-            // Skip the newline after header
-            int newline1 = cipherInputStream.read();
-            if (newline1 != 0x0A) {
-                throw new IOException("Not valid V5 file, expected 0x0A but got 0x" + String.format("%02X", newline1));
-            }
-
-            // Read JSON metadata
-            byte[] jsonBytes = readUntilNewline(cipherInputStream);
-            String jsonStr = new String(jsonBytes, StandardCharsets.UTF_8);
-            JSONObject json = new JSONObject(jsonStr);
-            String originalName = json.has(JSON_ORIGINAL_NAME) ? json.getString(JSON_ORIGINAL_NAME) : "";
-            int fileType = json.has(JSON_FILE_TYPE) ? json.getInt(JSON_FILE_TYPE) : -1;
-
-            // Create CompositeStreams wrapper for reading V5 sections
-            CompositeStreams compositeStreams = new CompositeStreams(cipherInputStream);
-
-            // Store metadata in a custom Streams object for compatibility
-            Streams streams = new Streams(cipherInputStream, secretKey, originalName, fileType, ContentType.FILE, null);
-            streams.compositeStreams = compositeStreams;
-            return streams;
-        }
-
-        // V3-V4 no longer supported. Only V5 is supported.
-        throw new IOException("Only V5 encrypted files are supported. Please re-encrypt your files.");
-    }
+    // Legacy decrypt method removed. All V5 files must use AEAD or SecretStream formats.
 
     @NonNull
     private static byte[] readUntilNewline(@NonNull InputStream inputStream) throws IOException {
@@ -1330,44 +1286,7 @@ public class Encryption {
     }
 
     private static Streams getCipherOutputStream(FragmentActivity context, Uri input, DocumentFile outputFile, char[] password, String sourceFileName, int version, int fileType, ContentType contentType, @Nullable RelatedFile[] relatedFiles, @Nullable String thumbFileName) throws GeneralSecurityException, IOException, JSONException {
-        SecureRandom sr = SecureRandom.getInstanceStrong();
-        Settings settings = Settings.getInstance(context);
-        final int ITERATION_COUNT = settings.getIterationCount();
-        byte[] versionBytes = toByteArray(version);
-        byte[] salt = new byte[SALT_LENGTH];
-        byte[] ivBytes = new byte[IV_LENGTH];
-        byte[] iterationCount = toByteArray(ITERATION_COUNT);
-        byte[] checkBytes = new byte[CHECK_LENGTH];
-        generateSecureRandom(sr, salt, ivBytes, checkBytes);
-
-        SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance(KEY_ALGORITHM);
-        KeySpec keySpec = new PBEKeySpec(password, salt, ITERATION_COUNT, KEY_LENGTH);
-        SecretKey secretKey = secretKeyFactory.generateSecret(keySpec);
-        IvParameterSpec ivParameterSpec = new IvParameterSpec(ivBytes);
-
-        Cipher cipher = Cipher.getInstance(CIPHER_LEGACY);
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivParameterSpec);
-
-        InputStream inputStream = context.getContentResolver().openInputStream(input);
-        OutputStream fos = new BufferedOutputStream(context.getContentResolver().openOutputStream(outputFile.getUri()), 1024 * 32);
-        writeSaltAndIV(versionBytes, salt, ivBytes, iterationCount, checkBytes, fos);
-        fos.flush();
-        CipherOutputStream cipherOutputStream = new CipherOutputStream(fos, cipher);
-        cipherOutputStream.write(checkBytes);
-        JSONObject json = new JSONObject();
-        json.put(JSON_ORIGINAL_NAME, sourceFileName);
-        json.put(JSON_FILE_TYPE, fileType);
-        json.put(JSON_CONTENT_TYPE, contentType.value);
-        // Store related files with hashes for correlation
-        if (relatedFiles != null && relatedFiles.length > 0) {
-            JSONArray relatedFilesJson = new JSONArray();
-            for (RelatedFile relatedFile : relatedFiles) {
-                relatedFilesJson.put(relatedFile.toJSON());
-            }
-            json.put(JSON_RELATED_FILES, relatedFilesJson);
-        }
-        cipherOutputStream.write(("\n" + json + "\n").getBytes(StandardCharsets.UTF_8));
-        return new Streams(inputStream, cipherOutputStream, secretKey);
+        throw new UnsupportedOperationException("Legacy encryption removed; use V5 composite writers (writeCompositeFile/createCompositeFile)");
     }
 
     private static Streams getTextCipherOutputStream(FragmentActivity context, String input, DocumentFile outputFile, char[] password, String sourceFileName, int version) throws GeneralSecurityException, IOException, JSONException {
@@ -1384,45 +1303,7 @@ public class Encryption {
 
     // Overload with RelatedFile array for correlation
     private static Streams getTextCipherOutputStream(FragmentActivity context, String input, DocumentFile outputFile, char[] password, String sourceFileName, int version, int fileType, ContentType contentType, @Nullable RelatedFile[] relatedFiles) throws GeneralSecurityException, IOException, JSONException {
-        SecureRandom sr = SecureRandom.getInstanceStrong();
-        Settings settings = Settings.getInstance(context);
-        final int ITERATION_COUNT = settings.getIterationCount();
-        byte[] versionBytes = toByteArray(version);
-        byte[] salt = new byte[SALT_LENGTH];
-        byte[] ivBytes = new byte[IV_LENGTH];
-        byte[] iterationCount = toByteArray(ITERATION_COUNT);
-        byte[] checkBytes = new byte[CHECK_LENGTH];
-        generateSecureRandom(sr, salt, ivBytes, checkBytes);
-
-        SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance(KEY_ALGORITHM);
-        KeySpec keySpec = new PBEKeySpec(password, salt, ITERATION_COUNT, KEY_LENGTH);
-        SecretKey secretKey = secretKeyFactory.generateSecret(keySpec);
-        IvParameterSpec ivParameterSpec = new IvParameterSpec(ivBytes);
-
-        Cipher cipher = Cipher.getInstance(CIPHER_LEGACY);
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivParameterSpec);
-
-        OutputStream fos = new BufferedOutputStream(context.getContentResolver().openOutputStream(outputFile.getUri()), 1024 * 32);
-        writeSaltAndIV(versionBytes, salt, ivBytes, iterationCount, checkBytes, fos);
-        fos.flush();
-        CipherOutputStream cipherOutputStream = new CipherOutputStream(fos, cipher);
-        cipherOutputStream.write(checkBytes);
-        JSONObject json = new JSONObject();
-        json.put(JSON_ORIGINAL_NAME, sourceFileName);
-        if (fileType >= 0) {
-            json.put(JSON_FILE_TYPE, fileType);
-        }
-        json.put(JSON_CONTENT_TYPE, contentType.value);
-        // Store related files with hashes for correlation
-        if (relatedFiles != null && relatedFiles.length > 0) {
-            JSONArray relatedFilesJson = new JSONArray();
-            for (RelatedFile relatedFile : relatedFiles) {
-                relatedFilesJson.put(relatedFile.toJSON());
-            }
-            json.put(JSON_RELATED_FILES, relatedFilesJson);
-        }
-        cipherOutputStream.write(("\n" + json + "\n").getBytes(StandardCharsets.UTF_8));
-        return new Streams(input, cipherOutputStream, secretKey);
+        throw new UnsupportedOperationException("Legacy encryption removed; use V5 composite writers (writeCompositeFile/createCompositeFile)");
     }
 
     public static byte[] toByteArray(int value) {
