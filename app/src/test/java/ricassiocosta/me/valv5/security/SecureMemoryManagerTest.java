@@ -42,4 +42,27 @@ public class SecureMemoryManagerTest {
         mgr.wipeSensitiveBuffers();
         for (byte bt : b) assertEquals(0, bt);
     }
+
+    @Test
+    public void testWipeNowNullOrEmpty() {
+        SecureMemoryManager mgr = SecureMemoryManager.getInstance();
+        mgr.setParanoidMode(true);
+        // Should not throw
+        mgr.wipeNow((byte[]) null);
+        mgr.wipeNow(new byte[0]);
+        mgr.wipeNow((char[]) null);
+        mgr.wipeNow(new char[0]);
+        // Restore
+        mgr.setParanoidMode(false);
+    }
+
+    @Test
+    public void testParanoidWipeNow() {
+        SecureMemoryManager mgr = SecureMemoryManager.getInstance();
+        mgr.setParanoidMode(true);
+        byte[] b = new byte[]{5,5,5,5};
+        mgr.wipeNow(b);
+        for (byte bt : b) assertEquals(0, bt);
+        mgr.setParanoidMode(false);
+    }
 }

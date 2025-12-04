@@ -19,4 +19,14 @@ public class StringStuffTest {
         assertEquals("500.00 B", StringStuff.bytesToReadableString(500));
         assertEquals("1.00 MB", StringStuff.bytesToReadableString(1_000_000));
     }
+
+    @org.junit.Test
+    public void testBytesToReadableStringBoundaries() {
+        // just below 1 kB
+        assertEquals("999.00 B", StringStuff.bytesToReadableString(999));
+        // exactly 1 kB
+        assertEquals("1.00 kB", StringStuff.bytesToReadableString(1000));
+        // exactly 1 MB
+        assertEquals("1.00 MB", StringStuff.bytesToReadableString(1_000_000));
+    }
 }
