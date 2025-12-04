@@ -910,14 +910,18 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                                     getString(R.string.dialog_create_folder_success, folderName));
                             // Add the new folder to the gallery view
                             GalleryFile newFolder = GalleryFile.asDirectory(newFolderUri);
-                            newFolder.setEncryptedFolder(true);
-                            newFolder.setDecryptedFolderName(folderName);
-                            synchronized (LOCK) {
-                                galleryViewModel.getGalleryFiles().add(newFolder);
-                                // Re-sort the list to maintain the current sort order
-                                Collections.sort(galleryViewModel.getGalleryFiles());
-                                galleryGridAdapter.notifyDataSetChanged();
-                                galleryPagerAdapter.notifyDataSetChanged();
+                            if (newFolder != null) {
+                                newFolder.setEncryptedFolder(true);
+                                newFolder.setDecryptedFolderName(folderName);
+                                synchronized (LOCK) {
+                                    galleryViewModel.getGalleryFiles().add(newFolder);
+                                    // Re-sort the list to maintain the current sort order
+                                    Collections.sort(galleryViewModel.getGalleryFiles());
+                                    galleryGridAdapter.notifyDataSetChanged();
+                                    galleryPagerAdapter.notifyDataSetChanged();
+                                }
+                            } else {
+                                Toaster.getInstance(requireContext()).showShort(getString(R.string.dialog_create_folder_error_failed));
                             }
                         });
                     } else {
