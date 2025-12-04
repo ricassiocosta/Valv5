@@ -558,12 +558,34 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
     }
 
     private void updateSelectedView(GalleryGridViewHolder holder, GalleryFile galleryFile) {
-        if (!galleryFile.isAllFolder() && selectMode && (isRootDir || !galleryFile.isDirectory())) {
-            holder.binding.checked.setVisibility(View.VISIBLE);
-            holder.binding.checked.setChecked(selectedFiles.contains(galleryFile));
-        } else {
+        boolean isSelected = !galleryFile.isAllFolder() && selectMode && selectedFiles.contains(galleryFile);
+        
+        // Check if item can be selected (either in root dir or any directory in subfolders)
+        boolean canBeSelected = !galleryFile.isAllFolder();
+        
+        if (canBeSelected && selectMode) {
+            // Show selection UI
+            if (isSelected) {
+                // Item is selected: show dark overlay and selection icon
+                holder.binding.selectionOverlay.setVisibility(View.VISIBLE);
+                holder.binding.selectionOverlay.setAlpha(0.6f); // 60% opacity for dark effect
+                holder.binding.selectionIcon.setVisibility(View.VISIBLE);
+                // Apply darkness to the image/content
+                holder.binding.imageView.setAlpha(0.4f);
+            } else {
+                // Item is not selected in selection mode: hide overlays
+                holder.binding.selectionOverlay.setVisibility(View.GONE);
+                holder.binding.selectionIcon.setVisibility(View.GONE);
+                holder.binding.imageView.setAlpha(1.0f);
+            }
+            // Hide the old checkbox
             holder.binding.checked.setVisibility(View.GONE);
-            holder.binding.checked.setChecked(false);
+        } else {
+            // Not in selection mode or cannot be selected
+            holder.binding.selectionOverlay.setVisibility(View.GONE);
+            holder.binding.selectionIcon.setVisibility(View.GONE);
+            holder.binding.imageView.setAlpha(1.0f);
+            holder.binding.checked.setVisibility(View.GONE);
         }
     }
 

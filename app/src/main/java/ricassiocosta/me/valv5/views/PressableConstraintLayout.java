@@ -42,6 +42,7 @@ public class PressableConstraintLayout extends ConstraintLayout {
     @Override
     public void setPressed(boolean pressed) {
         super.setPressed(pressed);
-        setAlpha(pressed ? Constants.HALF : Constants.FULL);
+        // Don't change the layout's opacity, as it affects the selection overlay
+        // Instead, let the layout handle visual feedback through the selection overlay
     }
 }
