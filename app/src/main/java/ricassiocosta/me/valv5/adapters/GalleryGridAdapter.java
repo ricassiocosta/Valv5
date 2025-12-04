@@ -411,7 +411,7 @@ public class GalleryGridAdapter extends RecyclerView.Adapter<GalleryGridViewHold
                     Navigation.findNavController(holder.binding.layout).navigate(R.id.action_directory_to_directory_all);
                 }
             } else if (selectMode) {
-                // Permite selecionar qualquer pasta exceto "All"
+                // Allow selecting any folder except "All"
                 if (!galleryFile.isAllFolder()) {
                     if (!selectedFiles.contains(galleryFile)) {
                         // Check if the item type matches the first selected item
