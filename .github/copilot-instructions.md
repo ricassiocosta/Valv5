@@ -19,7 +19,8 @@ Big-picture architecture
   - Navigation: app uses Navigation Component. The locked state equals the destination `R.id.password` (see `MainActivity` checks).
 
 Important files to read first
-- `app/src/main/java/ricassiocosta/me/valv5/MainActivity.java` — app lifecycle, background lock logic, `ScreenOffReceiver`, `startBackgroundLockTimer()`, `checkBackgroundLockTimeout()` and `performBackgroundLock()`.
+- `app/src/main/java/ricassiocosta/me/valv5/MainActivity.java` — app lifecycle, background lock logic, `handleScreenOffFromReceiver()`, `startBackgroundLockTimer()`, `checkBackgroundLockTimeout()` and `performBackgroundLock()`.
+- `app/src/main/java/ricassiocosta/me/valv5/App.java` — application-scoped screen-off receiver that delegates to MainActivity when available.
 - `app/src/main/java/ricassiocosta/me/valv5/utils/Settings.java` — all prefs keys and defaults.
 - `app/src/main/java/ricassiocosta/me/valv5/data/Password.java` — how the app clears credentials and performs secure cleanup.
 - `valv-cli/README.md` and `valv-cli/valv_cli.py` — CLI usage and build.
@@ -29,7 +30,7 @@ Project-specific conventions & patterns
 - SharedPrefs usage is centralized in `Settings` (use `Settings.getInstance(context)` when reading/writing prefs).
 - Logging: `SecureLog` is used for debug/error logs — prefer it over `System.out`.
 - Navigation state determines locked/unlocked behavior: code checks `NavController.getCurrentDestination().getId() == R.id.password` to infer locked state.
-- Broadcast receivers: screen-off behavior is handled with a dynamic receiver in `MainActivity.ScreenOffReceiver`. Be aware of lifecycle ordering when modifying registration/unregistration.
+- Broadcast receivers: screen-off behavior is now handled by an application-scoped receiver registered in `App.java`. The previous dynamic receiver in `MainActivity.ScreenOffReceiver` has been replaced; see `App.java` for registration and lifecycle management details.
 - Generated artifacts (do not modify): `app/build/generated/...` and `app/build/intermediates/...`.
 
 Integration points & cross-component communication
@@ -48,7 +49,7 @@ Debugging tips & important commands
 
 Editing & tests guidance
 - Do not modify generated code under `app/build/` — change source in `app/src/...` and re-run Gradle.
-- When adding instrumentation logs for lifecycle issues (e.g., screen-off flow), place them in `MainActivity` next to `ScreenOffReceiver.onReceive`, `performBackgroundLock()`, and `Password.lock(...)` to observe flow.
+- When adding instrumentation logs for lifecycle issues (e.g., screen-off flow), place them in `App.java` (where the receiver logic now resides), in `MainActivity.handleScreenOffFromReceiver()`, `performBackgroundLock()`, and `Password.lock(...)` to observe flow.
 
 What to ask the human developer
 - Which devices/OEMs are high-priority for QA (some behavior may be OEM-specific)?

@@ -40,14 +40,17 @@ public class App extends Application {
 
             @Override
             public void onActivityPaused(Activity activity) {
+                // Note: We keep the reference until onActivityStopped to ensure the activity
+                // can still handle screen-off events during the paused state.
+            }
+
+            @Override
+            public void onActivityStopped(Activity activity) {
                 Activity curr = currentActivityRef.get();
                 if (curr == activity) {
                     currentActivityRef = new WeakReference<>(null);
                 }
             }
-
-            @Override
-            public void onActivityStopped(Activity activity) {}
 
             @Override
             public void onActivitySaveInstanceState(Activity activity, android.os.Bundle bundle) {}
@@ -75,9 +78,15 @@ public class App extends Application {
                         }
                     } else {
                         // No activity instance available - do minimal safe cleanup
+                        // Note: Password.lock is safe to call even if already locked
                         try {
                             Settings settings = Settings.getInstance(context);
+                            
+                            // Perform lock - safe to call even if already locked
                             Password.lock(context, false);
+
+                            // Only attempt to open apps if returnToLastApp is enabled
+                            // This fallback path is used when no MainActivity instance is available
 
                             if (settings.returnToLastApp()) {
                                 String preferredApp = settings.getPreferredApp();
@@ -108,6 +117,12 @@ public class App extends Application {
         }
     }
 
+    /**
+     * Note: onTerminate() is called only in emulated environments and will never be
+     * called on a real Android device. The broadcast receiver registered in onCreate()
+     * will remain registered for the lifetime of the process in production. This is
+     * acceptable behavior as the receiver is needed for the app's security model.
+     */
     @Override
     public void onTerminate() {
         try {
