@@ -143,9 +143,17 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        // Cancel any pending background lock timer to prevent memory leaks
+        // and avoid executing callbacks on a destroyed activity
+        cancelBackgroundLockTimer();
+        
         // Receiver is managed at application level (App.java). Do not unregister here.
         if (!isChangingConfigurations()) {
             // Perform full memory cleanup when app is being destroyed
+            // Note: Password.lock() may be called redundantly here if already locked
+            // by performBackgroundLock() or handleScreenOffFromReceiver(), but this is
+            // intentional for security (defense in depth) - ensures session is invalidated
+            // even if the explicit lock calls failed or were skipped.
             Password.lock(this, false);
             SecureMemoryManager.getInstance().performFullCleanup(this);
         }

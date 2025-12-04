@@ -23,7 +23,7 @@ Important files to read first
 - `app/src/main/java/ricassiocosta/me/valv5/App.java` — application-scoped screen-off receiver that delegates to MainActivity when available.
 - `app/src/main/java/ricassiocosta/me/valv5/utils/Settings.java` — all prefs keys and defaults.
 - `app/src/main/java/ricassiocosta/me/valv5/data/Password.java` — how the app clears credentials and performs secure cleanup.
-- `valv-cli/README.md` and `valv-cli/valv_cli.py` — CLI usage and build.
+- `valv-cli/README.md` and `valv-cli/valv5_cli.py` — CLI usage and build.
 
 Project-specific conventions & patterns
 - Security-first: no disk caching of decrypted content — decrypted data stays in memory and is wiped via `SecureMemoryManager`.
