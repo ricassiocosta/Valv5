@@ -354,7 +354,7 @@ public class AEADTamperTest {
             streams.getFileBytes();
             streams.close();
             fail("Malformed iteration flags should cause decryption/parsing to fail");
-        } catch (Throwable e) {
+        } catch (UnsatisfiedLinkError | NoClassDefFoundError | ExceptionInInitializerError e) {
             // If native libs are missing (Argon2), skip the test in JVM; otherwise this is expected
             if (e instanceof UnsatisfiedLinkError || e instanceof NoClassDefFoundError) {
                 org.junit.Assume.assumeTrue("Skipping test due to missing native library", false);

@@ -27,7 +27,7 @@ public class EncryptionFolderNameTest {
 
             String decrypted = Encryption.decryptFolderName(encrypted, password);
             assertEquals(original, decrypted);
-        } catch (Throwable t) {
+        } catch (UnsatisfiedLinkError | NoClassDefFoundError | ExceptionInInitializerError e) {
             // Argon2 native library or other platform-dependent initializers may be missing in JVM test environment; skip test
             Assume.assumeTrue("Skipping Argon2-dependent test: native library not available or init failed", false);
         }
