@@ -7,6 +7,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.os.Handler;
+import android.os.Looper;
 
 import ricassiocosta.me.valv5.security.SecureLog;
 import ricassiocosta.me.valv5.data.Password;
@@ -16,9 +18,13 @@ import java.lang.ref.WeakReference;
 
 public class App extends Application {
     private static final String TAG = "App";
+    
+    // Delay in ms to allow activity lifecycle to settle before handling screen-off
+    private static final int SCREEN_OFF_HANDLING_DELAY_MS = 100;
 
     private volatile WeakReference<Activity> currentActivityRef = new WeakReference<>(null);
     private BroadcastReceiver screenOffReceiver;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override
     public void onCreate() {
@@ -46,17 +52,25 @@ public class App extends Application {
 
             @Override
             public void onActivityStopped(Activity activity) {
-                Activity curr = currentActivityRef.get();
-                if (curr == activity) {
-                    currentActivityRef.clear();
-                }
+                // DON'T clear the reference here - the screen-off receiver may need it
+                // during the brief window when activity is stopped but screen-off is being processed.
+                // The reference will be updated when another activity resumes, or will become
+                // stale (which is acceptable - we check instanceof MainActivity before using).
+                SecureLog.d(TAG, "Activity stopped: " + activity.getClass().getSimpleName());
             }
 
             @Override
             public void onActivitySaveInstanceState(Activity activity, android.os.Bundle bundle) {}
 
             @Override
-            public void onActivityDestroyed(Activity activity) {}
+            public void onActivityDestroyed(Activity activity) {
+                // Clear reference only on destroy to avoid memory leaks
+                Activity curr = currentActivityRef.get();
+                if (curr == activity) {
+                    SecureLog.d(TAG, "Clearing activity reference on destroy");
+                    currentActivityRef.clear();
+                }
+            }
         });
 
         // Register an application-scoped receiver to avoid missing ACTION_SCREEN_OFF
@@ -68,43 +82,12 @@ public class App extends Application {
             @Override
             public void onReceive(Context context, Intent intent) {
                 if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
-                    SecureLog.d(TAG, "App-level ScreenOffReceiver: ACTION_SCREEN_OFF received");
-                    Activity activity = currentActivityRef.get();
-                    if (activity instanceof MainActivity) {
-                        try {
-                            ((MainActivity) activity).handleScreenOffFromReceiver();
-                        } catch (Exception e) {
-                            SecureLog.w(TAG, "Error delegating screen-off to MainActivity", e);
-                        }
-                    } else {
-                        // No activity instance available - do minimal safe cleanup
-                        // Note: Password.lock is safe to call even if already locked
-                        try {
-                            Settings settings = Settings.getInstance(context);
-                            
-                            // Perform lock - safe to call even if already locked
-                            Password.lock(context, false);
-
-                            // Only attempt to open apps if returnToLastApp is enabled
-                            // This fallback path is used when no MainActivity instance is available
-
-                            if (settings.returnToLastApp()) {
-                                String preferredApp = settings.getPreferredApp();
-                                if (preferredApp != null && !preferredApp.isEmpty()) {
-                                    if (tryOpenApp(context, preferredApp)) return;
-                                }
-                                String lastApp = settings.getLastAppPackage();
-                                if (lastApp != null && !lastApp.isEmpty()) {
-                                    if (tryOpenApp(context, lastApp)) return;
-                                }
-                                openHomeScreen(context);
-                            } else {
-                                openHomeScreen(context);
-                            }
-                        } catch (Exception e) {
-                            SecureLog.w(TAG, "Error handling screen-off without activity", e);
-                        }
-                    }
+                    SecureLog.d(TAG, "ACTION_SCREEN_OFF received - scheduling lock handling");
+                    
+                    // Use a small delay to allow activity lifecycle to settle.
+                    // This is important when video is playing because the PlayerView
+                    // may be in the middle of releasing resources.
+                    mainHandler.postDelayed(() -> handleScreenOff(context), SCREEN_OFF_HANDLING_DELAY_MS);
                 }
             }
         };
@@ -134,6 +117,59 @@ public class App extends Application {
             SecureLog.w(TAG, "screenOffReceiver already unregistered", e);
         }
         super.onTerminate();
+    }
+
+    /**
+     * Handle screen-off event with proper logging and fallback behavior.
+     * This method is called with a small delay after ACTION_SCREEN_OFF to allow
+     * the activity lifecycle to settle, which is especially important during video playback.
+     */
+    private void handleScreenOff(Context context) {
+        Activity activity = currentActivityRef.get();
+        SecureLog.d(TAG, "handleScreenOff - activity ref: " + (activity != null ? activity.getClass().getSimpleName() : "null"));
+        
+        if (activity instanceof MainActivity) {
+            MainActivity mainActivity = (MainActivity) activity;
+            // Check if activity is still in a valid state (not destroyed/finishing)
+            if (!mainActivity.isFinishing() && !mainActivity.isDestroyed()) {
+                SecureLog.d(TAG, "Delegating screen-off to MainActivity");
+                try {
+                    mainActivity.handleScreenOffFromReceiver();
+                    return; // Successfully handled by MainActivity
+                } catch (Exception e) {
+                    SecureLog.w(TAG, "Error delegating screen-off to MainActivity", e);
+                    // Fall through to fallback handling
+                }
+            } else {
+                SecureLog.d(TAG, "MainActivity is finishing/destroyed, using fallback");
+            }
+        }
+        
+        // Fallback: No valid activity instance available
+        SecureLog.d(TAG, "Using fallback screen-off handling (no activity)");
+        try {
+            Settings settings = Settings.getInstance(context);
+            
+            // Perform lock - safe to call even if already locked
+            Password.lock(context, false);
+
+            // Only attempt to open apps if returnToLastApp is enabled
+            if (settings.returnToLastApp()) {
+                String preferredApp = settings.getPreferredApp();
+                if (preferredApp != null && !preferredApp.isEmpty()) {
+                    if (tryOpenApp(context, preferredApp)) return;
+                }
+                String lastApp = settings.getLastAppPackage();
+                if (lastApp != null && !lastApp.isEmpty()) {
+                    if (tryOpenApp(context, lastApp)) return;
+                }
+                openHomeScreen(context);
+            } else {
+                openHomeScreen(context);
+            }
+        } catch (Exception e) {
+            SecureLog.w(TAG, "Error in fallback screen-off handling", e);
+        }
     }
 
     private static boolean tryOpenApp(Context context, String packageName) {

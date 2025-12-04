@@ -283,7 +283,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private boolean isSystemApp(String packageName) {
-        // Lista de apps do sistema que não devemos abrir
         return packageName.equals("com.android.systemui") ||
                packageName.equals("android") ||
                packageName.startsWith("com.android.") ||
@@ -293,8 +292,6 @@ public class MainActivity extends AppCompatActivity {
     
     private void returnToLastApp() {
         Settings settings = Settings.getInstance(this);
-        
-        // Primeiro tenta usar o app preferido configurado pelo usuário
         String preferredApp = settings.getPreferredApp();
         if (preferredApp != null && !preferredApp.isEmpty()) {
             if (tryOpenApp(preferredApp)) {
@@ -302,7 +299,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         
-        // Se não há app preferido ou falhou, tenta usar o último app salvo
         String lastAppPackage = settings.getLastAppPackage();
         if (lastAppPackage != null && !lastAppPackage.isEmpty()) {
             if (tryOpenApp(lastAppPackage)) {
@@ -310,7 +306,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         
-        // Se não conseguir abrir nenhum app, volta para a home screen
         openHomeScreen();
     }
     
