@@ -48,7 +48,7 @@ public class App extends Application {
             public void onActivityStopped(Activity activity) {
                 Activity curr = currentActivityRef.get();
                 if (curr == activity) {
-                    currentActivityRef = new WeakReference<>(null);
+                    currentActivityRef.clear();
                 }
             }
 

@@ -38,6 +38,10 @@ import ricassiocosta.me.valv5.viewmodel.ShareViewModel;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
+    
+    // Delay before finishing activity after starting return-to-app, allowing
+    // the new activity to fully start before this one finishes
+    private static final int RETURN_TO_APP_FINISH_DELAY_MS = 300;
 
     private AppBarConfiguration appBarConfiguration;
     private ActivityMainBinding binding;
@@ -374,7 +378,7 @@ public class MainActivity extends AppCompatActivity {
                     } catch (Exception e) {
                         SecureLog.w(TAG, "Error finishing activity after returnToLastApp", e);
                     }
-                }, 300);
+                }, RETURN_TO_APP_FINISH_DELAY_MS);
             } else {
                 // Finish current activity instance (new one started will show password)
                 try {
