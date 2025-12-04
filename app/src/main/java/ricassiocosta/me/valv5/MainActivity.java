@@ -1,12 +1,9 @@
 package ricassiocosta.me.valv5;
 
-import android.content.BroadcastReceiver;
 import android.content.ComponentCallbacks2;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
@@ -44,7 +41,7 @@ public class MainActivity extends AppCompatActivity {
 
     private AppBarConfiguration appBarConfiguration;
     private ActivityMainBinding binding;
-    private BroadcastReceiver screenOffReceiver;
+    
     
     // Background lock timer - stores timestamp when app went to background
     private long backgroundTimestamp = 0;
@@ -53,11 +50,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
-        // Ensure screen-off receiver is registered for the whole lifetime of the
-        // activity object using the application context. Registering only in
-        // onStart()/onStop() can miss the ACTION_SCREEN_OFF broadcast due to
-        // lifecycle ordering (onStop() may be called before the broadcast).
-        installScreenOffReceiver();
+        // Screen-off receiver is managed by application-level lifecycle (App.java)
+        // to avoid lifecycle ordering issues. Do not register here.
         Settings settings = Settings.getInstance(this);
         if (settings.isSecureFlag()) {
             getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
@@ -147,10 +141,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
-        // Unregister the receiver when the activity instance is destroyed.
-        // We register with the application context so we must unregister
-        // the same receiver instance explicitly to avoid leaks.
-        uninstallScreenOffReceiver();
+        // Receiver is managed at application level (App.java). Do not unregister here.
         if (!isChangingConfigurations()) {
             // Perform full memory cleanup when app is being destroyed
             Password.lock(this, false);
@@ -190,36 +181,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void installScreenOffReceiver() {
-        if (screenOffReceiver == null) {
-            screenOffReceiver = new ScreenOffReceiver();
-            IntentFilter filter = new IntentFilter();
-            filter.addAction(Intent.ACTION_SCREEN_OFF);
-            try {
-                getApplicationContext().registerReceiver(screenOffReceiver, filter);
-            } catch (Exception e) {
-                SecureLog.w(TAG, "Failed to register screenOffReceiver on application context", e);
-                // Fallback to activity context registration
-                registerReceiver(screenOffReceiver, filter);
-            }
-        }
-    }
-
-    private void uninstallScreenOffReceiver() {
-        if (screenOffReceiver != null) {
-            try {
-                getApplicationContext().unregisterReceiver(screenOffReceiver);
-            } catch (IllegalArgumentException e) {
-                // Might not be registered on application context; try activity context
-                try {
-                    unregisterReceiver(screenOffReceiver);
-                } catch (IllegalArgumentException ex) {
-                    SecureLog.w(TAG, "Receiver already unregistered", ex);
-                }
-            }
-            screenOffReceiver = null;
-        }
-    }
+    // Screen-off receiver lifecycle is managed by `App.java`.
 
     /**
      * Start the background lock timer when the app goes to background.
@@ -369,57 +331,54 @@ public class MainActivity extends AppCompatActivity {
         startActivity(homeIntent);
     }
 
-    public class ScreenOffReceiver extends BroadcastReceiver {
-        private static final String TAG = "ScreenOffReceiver";
+    /*
+     * Centralized handler invoked by application-level receiver when an
+     * activity instance is available. Keeps the same behavior previously in
+     * the activity-scoped receiver branch.
+     */
+    void handleScreenOffFromReceiver() {
+        NavHostFragment navHostFragment = (NavHostFragment) getSupportFragmentManager().findFragmentById(R.id.nav_host_fragment_content_main);
+        if (navHostFragment == null) {
+            SecureLog.w(TAG, "NavHostFragment missing when handling screen-off");
+            return;
+        }
+        NavController navController = navHostFragment.getNavController();
+        if (navController.getCurrentDestination() != null && navController.getCurrentDestination().getId() != R.id.password) {
+            Settings settings = Settings.getInstance(this);
+            if (settings.returnToLastApp()) {
+                SecureLog.d(TAG, "Auto-lock triggered - using user configured preferred app");
+            }
 
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if (Objects.equals(intent.getAction(), Intent.ACTION_SCREEN_OFF)) {
-                SecureLog.d(TAG, "ScreenOffReceiver.onReceive: ACTION_SCREEN_OFF received");
-                NavHostFragment navHostFragment = (NavHostFragment) getSupportFragmentManager().findFragmentById(R.id.nav_host_fragment_content_main);
-                assert navHostFragment != null;
-                NavController navController = navHostFragment.getNavController();
-                if (navController.getCurrentDestination() != null && navController.getCurrentDestination().getId() != R.id.password) {
-                    Settings settings = Settings.getInstance(MainActivity.this);
-                    
-                    // Se a funcionalidade de retornar ao último app estiver habilitada, salva o app atual
-                    if (settings.returnToLastApp()) {
-                        saveLastOpenedAppBeforeLock();
-                    }
-                    
-                    Password.lock(MainActivity.this, false);
-                    
-                    // Se a funcionalidade de retornar ao último app estiver habilitada
-                    if (settings.returnToLastApp()) {
-                        // Retorna ao último app ANTES de finalizar
-                        returnToLastApp();
-                        // Finaliza após um delay maior para garantir que já mudou de app
-                        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                            finish();
-                        }, 500);
-                    } else {
-                        // Se não vai retornar ao último app, pode finalizar imediatamente
+            // Invalidate session and wipe sensitive memory
+            Password.lock(this, false);
+
+            // Restart the activity in a clean state so the navigation will
+            // land on the password screen (see performBackgroundLock).
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+
+            if (settings.returnToLastApp()) {
+                // Try to return to preferred/last app before finalizing; keep a short delay
+                // so the restart intent has time to take effect.
+                returnToLastApp();
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                    try {
                         finish();
+                    } catch (Exception e) {
+                        SecureLog.w(TAG, "Error finishing activity after returnToLastApp", e);
                     }
+                }, 500);
+            } else {
+                // Finish current activity instance (new one started will show password)
+                try {
+                    finish();
+                } catch (Exception e) {
+                    SecureLog.w(TAG, "Error finishing activity on screen off", e);
                 }
             }
         }
-        
-        private void saveLastOpenedAppBeforeLock() {
-            // Como agora o usuário configura manualmente o app preferido,
-            // este método pode ser simplificado ou removido.
-            // Mantemos apenas para compatibilidade futura.
-            SecureLog.d(TAG, "Auto-lock triggered - using user configured preferred app");
-        }
-        
-        private boolean isValidApp(String packageName) {
-            try {
-                PackageManager pm = getPackageManager();
-                Intent launchIntent = pm.getLaunchIntentForPackage(packageName);
-                return launchIntent != null;
-            } catch (Exception e) {
-                return false;
-            }
-        }
     }
+
+    
 }
