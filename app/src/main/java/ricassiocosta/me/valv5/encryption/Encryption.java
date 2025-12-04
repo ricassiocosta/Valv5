@@ -1996,14 +1996,14 @@ public class Encryption {
             return null;
         }
 
-        // Validate originalName after trimming whitespace - an all-whitespace name should be considered empty
-        if (originalName == null || originalName.trim().isEmpty()) {
+        // Trim whitespace from the name before validation and encryption
+        if (originalName == null) {
             throw new IllegalArgumentException("Folder name cannot be empty");
         }
-
-        // Trim whitespace from the name before encryption
         originalName = originalName.trim();
-
+        if (originalName.isEmpty()) {
+            throw new IllegalArgumentException("Folder name cannot be empty");
+        }
         if (originalName.length() > MAX_FOLDER_NAME_LENGTH) {
             throw new IllegalArgumentException("Folder name exceeds maximum length of " + MAX_FOLDER_NAME_LENGTH);
         }
