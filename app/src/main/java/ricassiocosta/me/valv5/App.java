@@ -23,7 +23,7 @@ public class App extends Application {
     private static final int SCREEN_OFF_HANDLING_DELAY_MS = 100;
 
     private volatile WeakReference<Activity> currentActivityRef = new WeakReference<>(null);
-    private BroadcastReceiver screenOf BREAK  fReceiver;
+    private BroadcastReceiver screenOffReceiver;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override
