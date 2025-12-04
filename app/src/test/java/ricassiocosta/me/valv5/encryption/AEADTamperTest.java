@@ -16,58 +16,254 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 
+/**
+ * Tests that AEAD encryption properly detects tampering and authentication failures.
+ * 
+ * These tests verify that:
+ * - Tampered ciphertext is rejected
+ * - Truncated authentication tags are rejected
+ * - Truncated headers are rejected
+ * - Wrong passwords fail authentication
+ * - Malformed iteration flags are handled
+ * - Truncated ciphertext is rejected
+ */
 public class AEADTamperTest {
+
+    private static final int IV_LENGTH = 12;
+    private static final int DEFAULT_ITERATIONS = 1000;
 
     @BeforeClass
     public static void setup() {
         Security.addProvider(new BouncyCastleProvider());
     }
 
-    @Test
-    public void testAEADTamperDetected() throws Exception {
-        byte[] fileData = "Sensitive data to protect".getBytes();
-        char[] password = "badger".toCharArray();
+    // ==================== Helper Methods ====================
 
-        SecureRandom sr = SecureRandom.getInstanceStrong();
-        byte[] salt = new byte[Encryption.SALT_LENGTH];
-        byte[] iv = new byte[12];
-        sr.nextBytes(salt);
-        sr.nextBytes(iv);
-
-        int iterationCount = 1000;
+    /**
+     * Encrypts data using AEAD (ChaCha20-Poly1305) and returns the complete encrypted blob.
+     */
+    private static byte[] encryptWithAEAD(byte[] fileData, char[] password, byte[] salt, byte[] iv, int iterationCount) throws Exception {
         int storedIteration = iterationCount | 0x80000000; // AEAD flag
 
         byte[] versionBytes = Encryption.toByteArray(Encryption.ENCRYPTION_VERSION_5);
         byte[] iterationBytes = Encryption.toByteArray(storedIteration);
 
-        // Derive key using PBKDF2 (mirrors Encryption fallback behavior)
+        // Derive key using PBKDF2
         SecretKeyFactory skf = SecretKeyFactory.getInstance("PBKDF2withHmacSHA512");
         PBEKeySpec spec = new PBEKeySpec(password, salt, iterationCount, 256);
         SecretKey tmp = skf.generateSecret(spec);
-        byte[] keyBytes = tmp.getEncoded();
-        SecretKey secretKey = new SecretKeySpec(keyBytes, "ChaCha20");
+        SecretKey secretKey = new SecretKeySpec(tmp.getEncoded(), "ChaCha20");
 
-        // Build plaintext composite with simple section writer
+        // Build plaintext composite
         ByteArrayOutputStream plaintextBuffer = new ByteArrayOutputStream();
-        // minimal metadata header
         plaintextBuffer.write(("\n{}\n").getBytes());
         SectionWriter sw = new SectionWriter(plaintextBuffer);
         sw.writeFileSection(new ByteArrayInputStream(fileData), fileData.length);
         sw.writeEndMarker();
         byte[] plaintext = plaintextBuffer.toByteArray();
 
-        // Encrypt with ChaCha20-Poly1305
+        // Encrypt
         Cipher cipher = Cipher.getInstance("ChaCha20-Poly1305", "BC");
-        IvParameterSpec ivSpec = new IvParameterSpec(iv);
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec);
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey, new IvParameterSpec(iv));
 
-        byte[] aad = new byte[4 + Encryption.SALT_LENGTH + iv.length + 4];
-        System.arraycopy(versionBytes, 0, aad, 0, 4);
-        System.arraycopy(salt, 0, aad, 4, Encryption.SALT_LENGTH);
-        System.arraycopy(iv, 0, aad, 4 + Encryption.SALT_LENGTH, iv.length);
-        System.arraycopy(iterationBytes, 0, aad, 4 + Encryption.SALT_LENGTH + iv.length, 4);
+        // Build and apply AAD
+        byte[] aad = buildAAD(versionBytes, salt, iv, iterationBytes);
+        cipher.updateAAD(aad);
+
+        byte[] ciphertext = cipher.doFinal(plaintext);
+
+        // Combine header + ciphertext
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.write(versionBytes);
+        out.write(salt);
+        out.write(iv);
+        out.write(iterationBytes);
+        out.write(ciphertext);
+
+        return out.toByteArray();
+    }
+
+    private static byte[] buildAAD(byte[] version, byte[] salt, byte[] iv, byte[] iteration) {
+        byte[] aad = new byte[4 + salt.length + iv.length + 4];
+        System.arraycopy(version, 0, aad, 0, 4);
+        System.arraycopy(salt, 0, aad, 4, salt.length);
+        System.arraycopy(iv, 0, aad, 4 + salt.length, iv.length);
+        System.arraycopy(iteration, 0, aad, 4 + salt.length + iv.length, 4);
+        return aad;
+    }
+
+    private static byte[] generateRandomBytes(int length) throws Exception {
+        byte[] bytes = new byte[length];
+        SecureRandom.getInstanceStrong().nextBytes(bytes);
+        return bytes;
+    }
+
+    private static int getHeaderLength() {
+        return 4 + Encryption.SALT_LENGTH + IV_LENGTH + 4;
+    }
+
+    /**
+     * Attempts to decrypt and verifies that it fails.
+     */
+    private static void assertDecryptionFails(byte[] encryptedData, char[] password, String failureMessage) {
+        try {
+            Encryption.Streams streams = Encryption.getCipherInputStream(
+                new ByteArrayInputStream(encryptedData), 
+                password, 
+                false, 
+                Encryption.ENCRYPTION_VERSION_5
+            );
+            streams.getFileBytes();
+            streams.close();
+            fail(failureMessage);
+        } catch (Exception e) {
+            // Expected: decryption/authentication should fail
+            assertNotNull("Exception should have a message or cause", e);
+        }
+    }
+
+    // ==================== Tamper Tests ====================
+
+    @Test
+    public void testAEADTamperDetected() throws Exception {
+        byte[] fileData = "Sensitive data to protect".getBytes();
+        char[] password = "badger".toCharArray();
+        byte[] salt = generateRandomBytes(Encryption.SALT_LENGTH);
+        byte[] iv = generateRandomBytes(IV_LENGTH);
+
+        byte[] encrypted = encryptWithAEAD(fileData, password, salt, iv, DEFAULT_ITERATIONS);
+
+        // Tamper a byte in ciphertext payload
+        int headerLen = getHeaderLength();
+        if (encrypted.length > headerLen + 5) {
+            encrypted[headerLen + 5] ^= 0x01;
+        }
+
+        assertDecryptionFails(encrypted, password, "Tampered ciphertext should not decrypt successfully");
+    }
+
+    @Test
+    public void testAEADTruncatedTagDetected() throws Exception {
+        byte[] fileData = "Sensitive data short".getBytes();
+        char[] password = "badger".toCharArray();
+        byte[] salt = generateRandomBytes(Encryption.SALT_LENGTH);
+        byte[] iv = generateRandomBytes(IV_LENGTH);
+
+        byte[] encrypted = encryptWithAEAD(fileData, password, salt, iv, DEFAULT_ITERATIONS);
+
+        // Truncate authentication tag (last 8 bytes)
+        byte[] truncated = java.util.Arrays.copyOf(encrypted, Math.max(0, encrypted.length - 8));
+
+        assertDecryptionFails(truncated, password, "Truncated tag should not decrypt successfully");
+    }
+
+    @Test
+    public void testAEADTruncatedHeaderDetected() throws Exception {
+        byte[] fileData = "Data header test".getBytes();
+        char[] password = "badger".toCharArray();
+        byte[] salt = generateRandomBytes(Encryption.SALT_LENGTH);
+        byte[] iv = generateRandomBytes(IV_LENGTH);
+
+        byte[] encrypted = encryptWithAEAD(fileData, password, salt, iv, DEFAULT_ITERATIONS);
+
+        // Truncate header (remove last 10 bytes from beginning area)
+        int truncateAt = getHeaderLength() - 10;
+        byte[] truncated = java.util.Arrays.copyOf(encrypted, Math.max(0, truncateAt));
+
+        assertDecryptionFails(truncated, password, "Truncated header should cause parsing to fail");
+    }
+
+    @Test
+    public void testAEADWrongPasswordDetected() throws Exception {
+        byte[] fileData = "Wrong password test".getBytes();
+        char[] correctPassword = "correct".toCharArray();
+        char[] wrongPassword = "incorrect".toCharArray();
+        byte[] salt = generateRandomBytes(Encryption.SALT_LENGTH);
+        byte[] iv = generateRandomBytes(IV_LENGTH);
+
+        byte[] encrypted = encryptWithAEAD(fileData, correctPassword, salt, iv, DEFAULT_ITERATIONS);
+
+        assertDecryptionFails(encrypted, wrongPassword, "Wrong password should not decrypt successfully");
+    }
+
+    @Test
+    public void testAEADTruncatedCiphertextDetected() throws Exception {
+        byte[] fileData = "Truncated ciphertext test data which is longer".getBytes();
+        char[] password = "truncate".toCharArray();
+        byte[] salt = generateRandomBytes(Encryption.SALT_LENGTH);
+        byte[] iv = generateRandomBytes(IV_LENGTH);
+
+        byte[] encrypted = encryptWithAEAD(fileData, password, salt, iv, DEFAULT_ITERATIONS);
+
+        // Truncate half of the ciphertext
+        int headerLen = getHeaderLength();
+        int ciphertextLen = encrypted.length - headerLen;
+        int truncatedLen = headerLen + (ciphertextLen / 2);
+        byte[] truncated = java.util.Arrays.copyOf(encrypted, truncatedLen);
+
+        assertDecryptionFails(truncated, password, "Truncated ciphertext should not decrypt successfully");
+    }
+
+    @Test
+    public void testAEADEmptyPasswordDetected() throws Exception {
+        byte[] fileData = "Empty password test".getBytes();
+        char[] correctPassword = "notempty".toCharArray();
+        char[] emptyPassword = new char[0];
+        byte[] salt = generateRandomBytes(Encryption.SALT_LENGTH);
+        byte[] iv = generateRandomBytes(IV_LENGTH);
+
+        byte[] encrypted = encryptWithAEAD(fileData, correctPassword, salt, iv, DEFAULT_ITERATIONS);
+
+        assertDecryptionFails(encrypted, emptyPassword, "Empty password should not decrypt data encrypted with non-empty password");
+    }
+
+    @Test
+    public void testAEADFlippedBitInHeaderDetected() throws Exception {
+        byte[] fileData = "Header bit flip test".getBytes();
+        char[] password = "headertest".toCharArray();
+        byte[] salt = generateRandomBytes(Encryption.SALT_LENGTH);
+        byte[] iv = generateRandomBytes(IV_LENGTH);
+
+        byte[] encrypted = encryptWithAEAD(fileData, password, salt, iv, DEFAULT_ITERATIONS);
+
+        // Flip a bit in the salt (part of AAD)
+        encrypted[5] ^= 0x01;
+
+        assertDecryptionFails(encrypted, password, "Flipped bit in header (AAD) should fail authentication");
+    }
+
+    @Test
+    public void testAEADMalformedIterationFlagsDetected() throws Exception {
+        byte[] fileData = "Malformed flags test".getBytes();
+        char[] password = "flags".toCharArray();
+        byte[] salt = generateRandomBytes(Encryption.SALT_LENGTH);
+        byte[] iv = generateRandomBytes(IV_LENGTH);
+
+        // Use an intentionally malformed iteration value
+        int storedIteration = 0x7FFFFFFF; // unlikely valid flag combination
+
+        byte[] versionBytes = Encryption.toByteArray(Encryption.ENCRYPTION_VERSION_5);
+        byte[] iterationBytes = Encryption.toByteArray(storedIteration);
+
+        // Derive key with PBKDF2
+        SecretKeyFactory skf = SecretKeyFactory.getInstance("PBKDF2withHmacSHA512");
+        PBEKeySpec spec = new PBEKeySpec(password, salt, 1000, 256);
+        SecretKey tmp = skf.generateSecret(spec);
+        SecretKey secretKey = new SecretKeySpec(tmp.getEncoded(), "ChaCha20");
+
+        ByteArrayOutputStream plaintextBuffer = new ByteArrayOutputStream();
+        plaintextBuffer.write(("\n{}\n").getBytes());
+        SectionWriter sw = new SectionWriter(plaintextBuffer);
+        sw.writeFileSection(new ByteArrayInputStream(fileData), fileData.length);
+        sw.writeEndMarker();
+        byte[] plaintext = plaintextBuffer.toByteArray();
+
+        Cipher cipher = Cipher.getInstance("ChaCha20-Poly1305", "BC");
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey, new IvParameterSpec(iv));
+
+        byte[] aad = buildAAD(versionBytes, salt, iv, iterationBytes);
         cipher.updateAAD(aad);
 
         byte[] ciphertext = cipher.doFinal(plaintext);
@@ -79,353 +275,22 @@ public class AEADTamperTest {
         out.write(iterationBytes);
         out.write(ciphertext);
 
-        // Tamper a byte in ciphertext payload
-        byte[] combined = out.toByteArray();
-        // flip a bit in the ciphertext area (after header)
-        int headerLen = 4 + Encryption.SALT_LENGTH + iv.length + 4;
-        if (combined.length > headerLen + 5) {
-            combined[headerLen + 5] ^= 0x01;
-        }
-
-        ByteArrayInputStream encryptedIn = new ByteArrayInputStream(combined);
-
         try {
-            Encryption.Streams streams = Encryption.getCipherInputStream(encryptedIn, password, false, Encryption.ENCRYPTION_VERSION_5);
-            // attempt to read file bytes; should fail authentication
-            streams.getFileBytes();
-            streams.close();
-            fail("Tampered ciphertext should not decrypt successfully");
-        } catch (Exception e) {
-            // expected: decryption/authentication should fail
-        }
-    }
-
-    @Test
-    public void testAEADTruncatedTagDetected() throws Exception {
-        byte[] fileData = "Sensitive data short".getBytes();
-        char[] password = "badger".toCharArray();
-
-        java.security.SecureRandom sr = java.security.SecureRandom.getInstanceStrong();
-        byte[] salt = new byte[Encryption.SALT_LENGTH];
-        byte[] iv = new byte[12];
-        sr.nextBytes(salt);
-        sr.nextBytes(iv);
-
-        int iterationCount = 1000;
-        int storedIteration = iterationCount | 0x80000000; // AEAD flag
-
-        byte[] versionBytes = Encryption.toByteArray(Encryption.ENCRYPTION_VERSION_5);
-        byte[] iterationBytes = Encryption.toByteArray(storedIteration);
-
-        javax.crypto.SecretKeyFactory skf = javax.crypto.SecretKeyFactory.getInstance("PBKDF2withHmacSHA512");
-        javax.crypto.spec.PBEKeySpec spec = new javax.crypto.spec.PBEKeySpec(password, salt, iterationCount, 256);
-        javax.crypto.SecretKey tmp = skf.generateSecret(spec);
-        byte[] keyBytes = tmp.getEncoded();
-        javax.crypto.SecretKey secretKey = new javax.crypto.spec.SecretKeySpec(keyBytes, "ChaCha20");
-
-        // plaintext composite
-        java.io.ByteArrayOutputStream plaintextBuffer = new java.io.ByteArrayOutputStream();
-        plaintextBuffer.write(("\n{}\n").getBytes());
-        SectionWriter sw = new SectionWriter(plaintextBuffer);
-        sw.writeFileSection(new java.io.ByteArrayInputStream(fileData), fileData.length);
-        sw.writeEndMarker();
-        byte[] plaintext = plaintextBuffer.toByteArray();
-
-        javax.crypto.Cipher cipher = javax.crypto.Cipher.getInstance("ChaCha20-Poly1305", "BC");
-        javax.crypto.spec.IvParameterSpec ivSpec = new javax.crypto.spec.IvParameterSpec(iv);
-        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey, ivSpec);
-
-        byte[] aad = new byte[4 + Encryption.SALT_LENGTH + iv.length + 4];
-        System.arraycopy(versionBytes, 0, aad, 0, 4);
-        System.arraycopy(salt, 0, aad, 4, Encryption.SALT_LENGTH);
-        System.arraycopy(iv, 0, aad, 4 + Encryption.SALT_LENGTH, iv.length);
-        System.arraycopy(iterationBytes, 0, aad, 4 + Encryption.SALT_LENGTH + iv.length, 4);
-        cipher.updateAAD(aad);
-
-        byte[] ciphertext = cipher.doFinal(plaintext);
-
-        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-        out.write(versionBytes);
-        out.write(salt);
-        out.write(iv);
-        out.write(iterationBytes);
-        out.write(ciphertext);
-
-        // Truncate authentication tag bytes from the end (remove 8 bytes)
-        byte[] combined = out.toByteArray();
-        int truncatedLen = Math.max(0, combined.length - 8);
-        byte[] truncated = java.util.Arrays.copyOf(combined, truncatedLen);
-
-        java.io.ByteArrayInputStream encryptedIn = new java.io.ByteArrayInputStream(truncated);
-
-        try {
-            Encryption.Streams streams = Encryption.getCipherInputStream(encryptedIn, password, false, Encryption.ENCRYPTION_VERSION_5);
-            // attempt to read file bytes; should fail due to truncated tag
-            streams.getFileBytes();
-            streams.close();
-            fail("Truncated tag should not decrypt successfully");
-        } catch (Exception e) {
-            // expected: decryption/authentication should fail
-        }
-    }
-
-    @Test
-    public void testAEADTruncatedHeaderDetected() throws Exception {
-        byte[] fileData = "Data header test".getBytes();
-        char[] password = "badger".toCharArray();
-
-        java.security.SecureRandom sr = java.security.SecureRandom.getInstanceStrong();
-        byte[] salt = new byte[Encryption.SALT_LENGTH];
-        byte[] iv = new byte[12];
-        sr.nextBytes(salt);
-        sr.nextBytes(iv);
-
-        int iterationCount = 1000;
-        int storedIteration = iterationCount | 0x80000000; // AEAD flag
-
-        byte[] versionBytes = Encryption.toByteArray(Encryption.ENCRYPTION_VERSION_5);
-        byte[] iterationBytes = Encryption.toByteArray(storedIteration);
-
-        javax.crypto.SecretKeyFactory skf = javax.crypto.SecretKeyFactory.getInstance("PBKDF2withHmacSHA512");
-        javax.crypto.spec.PBEKeySpec spec = new javax.crypto.spec.PBEKeySpec(password, salt, iterationCount, 256);
-        javax.crypto.SecretKey tmp = skf.generateSecret(spec);
-        javax.crypto.SecretKey secretKey = new javax.crypto.spec.SecretKeySpec(tmp.getEncoded(), "ChaCha20");
-
-        java.io.ByteArrayOutputStream plaintextBuffer = new java.io.ByteArrayOutputStream();
-        plaintextBuffer.write(("\n{}\n").getBytes());
-        SectionWriter sw = new SectionWriter(plaintextBuffer);
-        sw.writeFileSection(new java.io.ByteArrayInputStream(fileData), fileData.length);
-        sw.writeEndMarker();
-        byte[] plaintext = plaintextBuffer.toByteArray();
-
-        javax.crypto.Cipher cipher = javax.crypto.Cipher.getInstance("ChaCha20-Poly1305", "BC");
-        javax.crypto.spec.IvParameterSpec ivSpec = new javax.crypto.spec.IvParameterSpec(iv);
-        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey, ivSpec);
-
-        byte[] aad = new byte[4 + Encryption.SALT_LENGTH + iv.length + 4];
-        System.arraycopy(versionBytes, 0, aad, 0, 4);
-        System.arraycopy(salt, 0, aad, 4, Encryption.SALT_LENGTH);
-        System.arraycopy(iv, 0, aad, 4 + Encryption.SALT_LENGTH, iv.length);
-        System.arraycopy(iterationBytes, 0, aad, 4 + Encryption.SALT_LENGTH + iv.length, 4);
-        cipher.updateAAD(aad);
-
-        byte[] ciphertext = cipher.doFinal(plaintext);
-
-        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-        out.write(versionBytes);
-        out.write(salt);
-        out.write(iv);
-        out.write(iterationBytes);
-        out.write(ciphertext);
-
-        byte[] combined = out.toByteArray();
-        // Truncate a couple bytes from the header
-        int headerLen = 4 + Encryption.SALT_LENGTH + iv.length + 4;
-        byte[] truncatedHeader = java.util.Arrays.copyOfRange(combined, 0, combined.length - (headerLen - 2));
-
-        java.io.ByteArrayInputStream encryptedIn = new java.io.ByteArrayInputStream(truncatedHeader);
-
-        try {
-            Encryption.Streams streams = Encryption.getCipherInputStream(encryptedIn, password, false, Encryption.ENCRYPTION_VERSION_5);
-            streams.getFileBytes();
-            streams.close();
-            fail("Truncated header should cause parsing/decryption to fail");
-        } catch (Exception e) {
-            // expected
-        }
-    }
-
-    @Test
-    public void testAEADWrongPasswordDetected() throws Exception {
-        byte[] fileData = "Wrong password test".getBytes();
-        char[] password = "correct".toCharArray();
-        char[] wrong = "incorrect".toCharArray();
-
-        java.security.SecureRandom sr = java.security.SecureRandom.getInstanceStrong();
-        byte[] salt = new byte[Encryption.SALT_LENGTH];
-        byte[] iv = new byte[12];
-        sr.nextBytes(salt);
-        sr.nextBytes(iv);
-
-        int iterationCount = 1000;
-        int storedIteration = iterationCount | 0x80000000; // AEAD flag
-
-        byte[] versionBytes = Encryption.toByteArray(Encryption.ENCRYPTION_VERSION_5);
-        byte[] iterationBytes = Encryption.toByteArray(storedIteration);
-
-        javax.crypto.SecretKeyFactory skf = javax.crypto.SecretKeyFactory.getInstance("PBKDF2withHmacSHA512");
-        javax.crypto.spec.PBEKeySpec spec = new javax.crypto.spec.PBEKeySpec(password, salt, iterationCount, 256);
-        javax.crypto.SecretKey tmp = skf.generateSecret(spec);
-        javax.crypto.SecretKey secretKey = new javax.crypto.spec.SecretKeySpec(tmp.getEncoded(), "ChaCha20");
-
-        java.io.ByteArrayOutputStream plaintextBuffer = new java.io.ByteArrayOutputStream();
-        plaintextBuffer.write(("\n{}\n").getBytes());
-        SectionWriter sw = new SectionWriter(plaintextBuffer);
-        sw.writeFileSection(new java.io.ByteArrayInputStream(fileData), fileData.length);
-        sw.writeEndMarker();
-        byte[] plaintext = plaintextBuffer.toByteArray();
-
-        javax.crypto.Cipher cipher = javax.crypto.Cipher.getInstance("ChaCha20-Poly1305", "BC");
-        javax.crypto.spec.IvParameterSpec ivSpec = new javax.crypto.spec.IvParameterSpec(iv);
-        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey, ivSpec);
-
-        byte[] aad = new byte[4 + Encryption.SALT_LENGTH + iv.length + 4];
-        System.arraycopy(versionBytes, 0, aad, 0, 4);
-        System.arraycopy(salt, 0, aad, 4, Encryption.SALT_LENGTH);
-        System.arraycopy(iv, 0, aad, 4 + Encryption.SALT_LENGTH, iv.length);
-        System.arraycopy(iterationBytes, 0, aad, 4 + Encryption.SALT_LENGTH + iv.length, 4);
-        cipher.updateAAD(aad);
-
-        byte[] ciphertext = cipher.doFinal(plaintext);
-
-        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-        out.write(versionBytes);
-        out.write(salt);
-        out.write(iv);
-        out.write(iterationBytes);
-        out.write(ciphertext);
-
-        java.io.ByteArrayInputStream encryptedIn = new java.io.ByteArrayInputStream(out.toByteArray());
-
-        try {
-            Encryption.Streams streams = Encryption.getCipherInputStream(encryptedIn, wrong, false, Encryption.ENCRYPTION_VERSION_5);
-            streams.getFileBytes();
-            streams.close();
-            fail("Wrong password should not decrypt successfully");
-        } catch (Exception e) {
-            // expected
-        }
-    }
-
-    @Test
-    public void testAEADMalformedIterationFlagsDetected() throws Exception {
-        byte[] fileData = "Malformed flags test".getBytes();
-        char[] password = "flags".toCharArray();
-
-        java.security.SecureRandom sr = java.security.SecureRandom.getInstanceStrong();
-        byte[] salt = new byte[Encryption.SALT_LENGTH];
-        byte[] iv = new byte[12];
-        sr.nextBytes(salt);
-        sr.nextBytes(iv);
-
-        // Use an intentionally malformed/stupid iteration value
-        int storedIteration = 0x7FFFFFFF; // unlikely valid flag combination
-
-        byte[] versionBytes = Encryption.toByteArray(Encryption.ENCRYPTION_VERSION_5);
-        byte[] iterationBytes = Encryption.toByteArray(storedIteration);
-
-        // derive key with PBKDF2 to construct encryption (won't match parser expectations)
-        javax.crypto.SecretKeyFactory skf = javax.crypto.SecretKeyFactory.getInstance("PBKDF2withHmacSHA512");
-        javax.crypto.spec.PBEKeySpec spec = new javax.crypto.spec.PBEKeySpec(password, salt, 1000, 256);
-        javax.crypto.SecretKey tmp = skf.generateSecret(spec);
-        javax.crypto.SecretKey secretKey = new javax.crypto.spec.SecretKeySpec(tmp.getEncoded(), "ChaCha20");
-
-        java.io.ByteArrayOutputStream plaintextBuffer = new java.io.ByteArrayOutputStream();
-        plaintextBuffer.write(("\n{}\n").getBytes());
-        SectionWriter sw = new SectionWriter(plaintextBuffer);
-        sw.writeFileSection(new java.io.ByteArrayInputStream(fileData), fileData.length);
-        sw.writeEndMarker();
-        byte[] plaintext = plaintextBuffer.toByteArray();
-
-        javax.crypto.Cipher cipher = javax.crypto.Cipher.getInstance("ChaCha20-Poly1305", "BC");
-        javax.crypto.spec.IvParameterSpec ivSpec = new javax.crypto.spec.IvParameterSpec(iv);
-        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey, ivSpec);
-
-        byte[] aad = new byte[4 + Encryption.SALT_LENGTH + iv.length + 4];
-        System.arraycopy(versionBytes, 0, aad, 0, 4);
-        System.arraycopy(salt, 0, aad, 4, Encryption.SALT_LENGTH);
-        System.arraycopy(iv, 0, aad, 4 + Encryption.SALT_LENGTH, iv.length);
-        System.arraycopy(iterationBytes, 0, aad, 4 + Encryption.SALT_LENGTH + iv.length, 4);
-        cipher.updateAAD(aad);
-
-        byte[] ciphertext = cipher.doFinal(plaintext);
-
-        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-        out.write(versionBytes);
-        out.write(salt);
-        out.write(iv);
-        out.write(iterationBytes);
-        out.write(ciphertext);
-
-        java.io.ByteArrayInputStream encryptedIn = new java.io.ByteArrayInputStream(out.toByteArray());
-
-        try {
-            Encryption.Streams streams = Encryption.getCipherInputStream(encryptedIn, password, false, Encryption.ENCRYPTION_VERSION_5);
+            Encryption.Streams streams = Encryption.getCipherInputStream(
+                new ByteArrayInputStream(out.toByteArray()), 
+                password, 
+                false, 
+                Encryption.ENCRYPTION_VERSION_5
+            );
             streams.getFileBytes();
             streams.close();
             fail("Malformed iteration flags should cause decryption/parsing to fail");
         } catch (UnsatisfiedLinkError | NoClassDefFoundError | ExceptionInInitializerError e) {
-            // If native libs are missing (Argon2), skip the test in JVM; otherwise this is expected
-            if (e instanceof UnsatisfiedLinkError || e instanceof NoClassDefFoundError) {
-                org.junit.Assume.assumeTrue("Skipping test due to missing native library", false);
-            }
-            // otherwise expected - authentication/parsing failure
-        }
-    }
-
-    @Test
-    public void testAEADTruncatedCiphertextDetected() throws Exception {
-        byte[] fileData = "Truncated ciphertext test data which is longer".getBytes();
-        char[] password = "truncate".toCharArray();
-
-        java.security.SecureRandom sr = java.security.SecureRandom.getInstanceStrong();
-        byte[] salt = new byte[Encryption.SALT_LENGTH];
-        byte[] iv = new byte[12];
-        sr.nextBytes(salt);
-        sr.nextBytes(iv);
-
-        int iterationCount = 1000;
-        int storedIteration = iterationCount | 0x80000000; // AEAD flag
-
-        byte[] versionBytes = Encryption.toByteArray(Encryption.ENCRYPTION_VERSION_5);
-        byte[] iterationBytes = Encryption.toByteArray(storedIteration);
-
-        javax.crypto.SecretKeyFactory skf = javax.crypto.SecretKeyFactory.getInstance("PBKDF2withHmacSHA512");
-        javax.crypto.spec.PBEKeySpec spec = new javax.crypto.spec.PBEKeySpec(password, salt, iterationCount, 256);
-        javax.crypto.SecretKey tmp = skf.generateSecret(spec);
-        javax.crypto.SecretKey secretKey = new javax.crypto.spec.SecretKeySpec(tmp.getEncoded(), "ChaCha20");
-
-        java.io.ByteArrayOutputStream plaintextBuffer = new java.io.ByteArrayOutputStream();
-        plaintextBuffer.write(("\n{}\n").getBytes());
-        SectionWriter sw = new SectionWriter(plaintextBuffer);
-        sw.writeFileSection(new java.io.ByteArrayInputStream(fileData), fileData.length);
-        sw.writeEndMarker();
-        byte[] plaintext = plaintextBuffer.toByteArray();
-
-        javax.crypto.Cipher cipher = javax.crypto.Cipher.getInstance("ChaCha20-Poly1305", "BC");
-        javax.crypto.spec.IvParameterSpec ivSpec = new javax.crypto.spec.IvParameterSpec(iv);
-        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey, ivSpec);
-
-        byte[] aad = new byte[4 + Encryption.SALT_LENGTH + iv.length + 4];
-        System.arraycopy(versionBytes, 0, aad, 0, 4);
-        System.arraycopy(salt, 0, aad, 4, Encryption.SALT_LENGTH);
-        System.arraycopy(iv, 0, aad, 4 + Encryption.SALT_LENGTH, iv.length);
-        System.arraycopy(iterationBytes, 0, aad, 4 + Encryption.SALT_LENGTH + iv.length, 4);
-        cipher.updateAAD(aad);
-
-        byte[] ciphertext = cipher.doFinal(plaintext);
-
-        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-        out.write(versionBytes);
-        out.write(salt);
-        out.write(iv);
-        out.write(iterationBytes);
-        out.write(ciphertext);
-
-        byte[] combined = out.toByteArray();
-        // Truncate a substantial portion of ciphertext (not only tag)
-        int truncatedLen = Math.max(0, combined.length - (ciphertext.length / 2));
-        byte[] truncated = java.util.Arrays.copyOf(combined, truncatedLen);
-
-        java.io.ByteArrayInputStream encryptedIn = new java.io.ByteArrayInputStream(truncated);
-
-        try {
-            Encryption.Streams streams = Encryption.getCipherInputStream(encryptedIn, password, false, Encryption.ENCRYPTION_VERSION_5);
-            streams.getFileBytes();
-            streams.close();
-            fail("Truncated ciphertext should not decrypt successfully");
+            // Skip if native libs missing (Argon2)
+            org.junit.Assume.assumeTrue("Skipping: missing native library", false);
         } catch (Exception e) {
-            // expected
+            // Expected: authentication/parsing failure
+            assertNotNull(e);
         }
     }
 }
