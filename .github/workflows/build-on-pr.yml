@@ -1,4 +1,4 @@
-name: Build Android App on PR
+name: Build Android App on PR and Run Unit Tests (JVM)
 
 on:
   pull_request:
