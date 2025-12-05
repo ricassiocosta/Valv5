@@ -2,13 +2,15 @@ name: Android Instrumentation Tests
 
 on:
   pull_request:
-    paths:
-      - 'app/**'
+    types:
+      - labeled
 
 jobs:
   instrumentation:
     name: Run instrumentation tests on emulator
     runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'run-instrumentation-tests')
+
     steps:
       - uses: actions/checkout@v4
 
