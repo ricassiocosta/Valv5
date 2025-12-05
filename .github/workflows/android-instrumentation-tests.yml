@@ -36,12 +36,16 @@ jobs:
               return;
             }
 
-            await github.rest.issues.removeLabel({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number, // Usa o número da issue/PR do contexto
-              name: labelName
-            });
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number, // Usa o número da issue/PR do contexto
+                name: labelName
+              });
+            } catch (error) {
+              console.log(`Failed to remove '${labelName}'. It could be deleted already. Details: ${error.message}`);
+            }
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
