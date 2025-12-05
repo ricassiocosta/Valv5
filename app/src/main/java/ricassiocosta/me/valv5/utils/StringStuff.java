@@ -18,7 +18,7 @@
 
 package ricassiocosta.me.valv5.utils;
 
-import android.icu.text.DecimalFormat;
+import java.text.DecimalFormat;
 
 import androidx.annotation.NonNull;
 

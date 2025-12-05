@@ -52,6 +52,9 @@ android {
         viewBinding = true
         buildConfig = true
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
     dependenciesInfo {
         // Disables dependency metadata when building APKs.
         includeInApk = false
@@ -68,6 +71,12 @@ dependencies {
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
     testImplementation(libs.junit)
+    // Robolectric for JVM Android unit tests
+    testImplementation("org.robolectric:robolectric:4.11")
+    // BouncyCastle provider for ChaCha20-Poly1305 support on the JVM
+    testImplementation("org.bouncycastle:bcprov-jdk15on:1.70")
+    // Make BouncyCastle available to instrumentation tests as well
+    androidTestImplementation("org.bouncycastle:bcprov-jdk15on:1.70")
 
     implementation(libs.appcompat)
     implementation(libs.material)

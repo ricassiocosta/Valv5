@@ -17,11 +17,6 @@ Valv5 supports two key derivation functions:
 
 Argon2id provides superior protection against hardware-accelerated brute force attacks compared to PBKDF2.
 
-### PBKDF2 (Legacy/Fallback)
-- **Algorithm**: `PBKDF2withHmacSHA512`
-- **Iterations**: 120,000 (default, configurable)
-- **Key Length**: 256 bits (32 bytes)
-
 ## Encryption Modes
 
 ### AEAD Mode (ChaCha20-Poly1305) - Small Files (≤50 MB)
@@ -38,13 +33,6 @@ For files larger than 50 MB, Valv5 uses libsodium's SecretStream for memory-effi
 - **Chunk Size**: 64 KB default
 - **Per-Chunk Authentication**: 17-byte tag per chunk
 - **Benefits**: Stream processing without loading entire file into memory, per-chunk integrity verification
-
-### Legacy Mode (ChaCha20 with Check Bytes)
-For backwards compatibility with older files:
-- **Cipher**: ChaCha20/NONE/NoPadding
-- **Check Bytes**: 12-byte password verification
-- **Salt**: 16 bytes
-- **IV**: 12 bytes
 
 ## V5 Encrypted file structure (Composite Atomic Format)
 
@@ -121,7 +109,7 @@ The encrypted content (after AEAD/stream decryption) contains:
 ## Decrypting
 
 ### Determining Encryption Mode
-1. Read header: [version:4][salt:16][iv:12][iteration_count:4]
+1. Read header: [version:5][salt:16][iv:12][iteration_count:4]
 2. Extract flags from iteration_count:
    - If AEAD_FLAG set: Use ChaCha20-Poly1305 AEAD decryption
    - If STREAM_FLAG set: Use SecretStream decryption
