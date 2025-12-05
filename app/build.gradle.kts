@@ -61,9 +61,6 @@ android {
         // Disables dependency metadata when building Android App Bundles.
         includeInBundle = false
     }
-    kotlinOptions {
-        jvmTarget = "21"
-    }
 }
 
 dependencies {
@@ -86,6 +83,7 @@ dependencies {
     implementation(libs.preference)
     implementation(libs.activity)
     implementation(libs.biometrics)
+    implementation(libs.documentfile)
 
     implementation(libs.security.crypto)
     implementation(libs.media3.exoplayer)
@@ -97,19 +95,12 @@ dependencies {
     implementation(libs.argon2)
 
     // libsodium for streaming AEAD encryption (XChaCha20-Poly1305 secretstream)
-    // JNA 5.5.0 is the version that lazysodium-android 5.1.0 was built with
     implementation("com.goterl:lazysodium-android:5.1.0@aar")
-    implementation("net.java.dev.jna:jna:5.5.0@aar")
+    implementation("net.java.dev.jna:jna:5.18.0@aar")
 
     implementation(libs.glide)
     implementation(libs.about.libraries)
     implementation(libs.about.libraries.compose)
-}
-
-aboutLibraries {
-    configPath = "config"
-    // Remove the "generated" timestamp to allow for reproducible builds
-    excludeFields = arrayOf("generated")
 }
 
 tasks.whenTaskAdded { // https://gist.github.com/obfusk/61046e09cee352ae6dd109911534b12e#fix-proposed-by-linsui-disable-baseline-profiles
