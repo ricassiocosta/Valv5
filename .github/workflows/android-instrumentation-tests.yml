@@ -9,6 +9,7 @@ jobs:
   instrumentation:
     name: Run instrumentation tests on emulator
     runs-on: ubuntu-latest
+
     if: contains(github.event.pull_request.labels.*.name, 'run-instrumentation-tests')
 
     permissions:
@@ -23,7 +24,14 @@ jobs:
           script: |
             const labelName = 'run-instrumentation-tests';
             
-            const labels = github.event.pull_request.labels.map(l => l.name);
+            const pr = context.payload.pull_request;
+
+            if (!pr) {
+              return;
+            }
+
+            const labels = pr.labels.map(l => l.name);
+
             if (!labels.includes(labelName)) {
               return;
             }
@@ -31,7 +39,7 @@ jobs:
             await github.rest.issues.removeLabel({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
+              issue_number: context.issue.number, // Usa o número da issue/PR do contexto
               name: labelName
             });
 
