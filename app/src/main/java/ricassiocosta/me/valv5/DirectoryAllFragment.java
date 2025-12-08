@@ -60,6 +60,9 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
     // Pending files batch to add to UI
     private final List<GalleryFile> pendingBatch = Collections.synchronizedList(new ArrayList<>());
     
+    // Track the active filter during lazy loading
+    private int activeFilter = FILTER_ALL;
+    
     private ExecutorService executorService;
     private Thread mainScanThread;
 
@@ -308,6 +311,17 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
     }
 
     /**
+     * Override filterBy to track active filter during lazy loading.
+     * This ensures newly loaded files respect the current filter.
+     */
+    @Override
+    @SuppressLint("NotifyDataSetChanged")
+    void filterBy(int filter) {
+        activeFilter = filter;
+        super.filterBy(filter);
+    }
+
+    /**
      * Lazy loading implementation - shows files incrementally as they are found.
      * Uses RANDOM order by default which doesn't require all files to be loaded.
      */
@@ -502,17 +516,38 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
             return;
         }
         
-        // Add to master list
+        // Add to master list (all files, unfiltered)
         allFilesFound.addAll(newFiles);
         incrementFiles(newFiles.size());
         
-        // Add to pending batch
+        // Filter files based on active filter before adding to UI
+        List<GalleryFile> filesToAdd = new ArrayList<>();
+        List<GalleryFile> filesToHide = new ArrayList<>();
+        
+        for (GalleryFile f : newFiles) {
+            if (activeFilter != FILTER_ALL && !f.isDirectory() && f.getFileType().type != activeFilter) {
+                // File doesn't match filter
+                filesToHide.add(f);
+            } else {
+                // File matches filter or is directory
+                filesToAdd.add(f);
+            }
+        }
+        
+        // Add files to pending batch (only those that match filter)
         synchronized (pendingBatch) {
-            pendingBatch.addAll(newFiles);
+            pendingBatch.addAll(filesToAdd);
             
             // Flush batch if large enough
             if (pendingBatch.size() >= BATCH_SIZE) {
                 flushPendingBatch();
+            }
+        }
+        
+        // Store hidden files in galleryViewModel
+        if (!filesToHide.isEmpty()) {
+            synchronized (LOCK) {
+                galleryViewModel.getHiddenFiles().addAll(filesToHide);
             }
         }
     }
