@@ -499,11 +499,19 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
             }
             binding.viewPager.setVisibility(View.VISIBLE);
             binding.viewPager.setCurrentItem(pos, false);
+            // Hide loading overlays when showing media
+            binding.cLLoading.cLLoading.setVisibility(View.GONE);
+            binding.loadingIndicatorBottom.setVisibility(View.GONE);
         } else {
             if (ab != null) {
                 ab.show();
             }
             binding.viewPager.setVisibility(View.GONE);
+            // Restore loading overlay visibility if still loading
+            if (isLoadingInProgress()) {
+                // Show the bottom indicator if loading is in progress
+                binding.loadingIndicatorBottom.setVisibility(View.VISIBLE);
+            }
             if (pos >= 0) {
                 RecyclerView.ViewHolder viewHolder = binding.recyclerView.findViewHolderForAdapterPosition(pos);
                 if (viewHolder != null && animate) {
