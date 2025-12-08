@@ -608,6 +608,8 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                         galleryGridAdapter.notifyDataSetChanged();
                         galleryPagerAdapter.notifyDataSetChanged();
                     }
+                    // Scroll to top when sorting changes
+                    binding.recyclerView.scrollToPosition(0);
                 });
             }
         }).start();
