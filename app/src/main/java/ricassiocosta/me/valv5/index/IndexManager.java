@@ -559,10 +559,15 @@ public class IndexManager {
             @Nullable IOnProgress onProgress,
             @NonNull AtomicBoolean cancelled) {
         
-        SecureLog.d(TAG, "generateIndex: starting full index generation");
+        SecureLog.d(TAG, "generateIndex: starting smart index generation");
         
-        // Clear existing cache
-        indexCache.clear();
+        // Load existing index first (if any) to avoid re-reading already indexed files
+        int existingEntries = indexCache.size();
+        if (existingEntries == 0) {
+            loadIndex(activity, rootUri, password);
+            existingEntries = indexCache.size();
+        }
+        SecureLog.d(TAG, "generateIndex: starting with " + existingEntries + " existing entries");
         
         AtomicInteger totalFiles = new AtomicInteger(0);
         AtomicInteger processedFiles = new AtomicInteger(0);
@@ -572,21 +577,31 @@ public class IndexManager {
             countFilesRecursive(activity, rootUri, totalFiles, cancelled);
             
             if (cancelled.get()) {
-                return -1;
+                // Save partial progress before returning
+                SecureLog.d(TAG, "generateIndex: cancelled during counting, saving partial index");
+                saveIndex(activity, rootUri, password);
+                return indexCache.size();
             }
             
-            SecureLog.d(TAG, "generateIndex: found " + totalFiles.get() + " files to index");
+            SecureLog.d(TAG, "generateIndex: found " + totalFiles.get() + " files to process");
             
-            // Second pass: index files
+            // Second pass: index files (skips already indexed ones)
             indexFolderRecursive(activity, rootUri, "", password, totalFiles.get(), processedFiles, onProgress, cancelled);
             
             if (cancelled.get()) {
-                return -1;
+                // Save partial progress before returning
+                int newEntries = indexCache.size() - existingEntries;
+                SecureLog.d(TAG, "generateIndex: cancelled, saving partial index with " + newEntries + " new entries");
+                saveIndex(activity, rootUri, password);
+                return indexCache.size();
             }
+            
+            int newEntries = indexCache.size() - existingEntries;
+            SecureLog.d(TAG, "generateIndex: added " + newEntries + " new entries");
             
             // Save the index
             if (saveIndex(activity, rootUri, password)) {
-                SecureLog.d(TAG, "generateIndex: completed, indexed " + indexCache.size() + " files");
+                SecureLog.d(TAG, "generateIndex: completed, total " + indexCache.size() + " files");
                 return indexCache.size();
             }
             
@@ -594,6 +609,8 @@ public class IndexManager {
             
         } catch (Exception e) {
             SecureLog.e(TAG, "generateIndex: error", e);
+            // Try to save partial progress even on error
+            saveIndex(activity, rootUri, password);
             return -1;
         }
     }
@@ -688,13 +705,23 @@ public class IndexManager {
                         String subFolderPath = folderPath.isEmpty() ? name : folderPath + "/" + name;
                         indexFolderRecursive(context, subFolderUri, subFolderPath, password, totalFiles, processedFiles, onProgress, cancelled);
                     } else if (isV5FileName(name)) {
-                        // Index this file
-                        Uri fileUri = DocumentsContract.buildDocumentUriUsingTree(childrenUri, docId);
-                        
                         // Skip if this is the index file itself
-                        if (name.equals(indexFileName)) {
+                        if (isIndexFileName(name)) {
                             continue;
                         }
+                        
+                        // Skip if already in cache (smart regeneration)
+                        if (indexCache.containsKey(name)) {
+                            int processed = processedFiles.incrementAndGet();
+                            if (onProgress != null) {
+                                long progressPercent = totalFiles > 0 ? (processed * 100L / totalFiles) : 0;
+                                onProgress.onProgress(progressPercent);
+                            }
+                            continue;
+                        }
+                        
+                        // Index this file - need to read metadata
+                        Uri fileUri = DocumentsContract.buildDocumentUriUsingTree(childrenUri, docId);
                         
                         int fileType = readFileType(context, fileUri, password);
                         if (fileType >= 0) {

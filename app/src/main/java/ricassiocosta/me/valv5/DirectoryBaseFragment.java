@@ -1068,7 +1068,12 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                     return;
                 }
                 if (cancelled.get()) {
-                    // Already showed cancellation message
+                    // Show message indicating partial progress was saved
+                    if (result > 0) {
+                        Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled_partial, result));
+                    } else {
+                        Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled));
+                    }
                 } else if (result >= 0) {
                     Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generated, result));
                 } else {

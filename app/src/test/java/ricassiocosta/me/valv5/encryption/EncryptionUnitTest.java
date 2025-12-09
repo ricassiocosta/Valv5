@@ -76,4 +76,57 @@ public class EncryptionUnitTest {
         java.io.InputStream is = new java.io.ByteArrayInputStream(data);
         assertFalse(Encryption.isAnimatedWebp(is));
     }
+
+    // ==================== Index-related tests ====================
+
+    @Test
+    public void testEncryptionVersion5Constant() {
+        // Verify the encryption version constant used for index files
+        assertEquals(5, Encryption.ENCRYPTION_VERSION_5);
+    }
+
+    @Test
+    public void testContentTypeEnumValues() {
+        // Verify all ContentType enum values exist
+        Encryption.ContentType[] values = Encryption.ContentType.values();
+        assertNotNull(values);
+        assertEquals(3, values.length);
+        
+        // Check expected values
+        assertNotNull(Encryption.ContentType.FILE);
+        assertNotNull(Encryption.ContentType.THUMBNAIL);
+        assertNotNull(Encryption.ContentType.NOTE);
+    }
+
+    @Test
+    public void testContentTypeValueOf() {
+        assertEquals(Encryption.ContentType.FILE, Encryption.ContentType.valueOf("FILE"));
+        assertEquals(Encryption.ContentType.THUMBNAIL, Encryption.ContentType.valueOf("THUMBNAIL"));
+        assertEquals(Encryption.ContentType.NOTE, Encryption.ContentType.valueOf("NOTE"));
+    }
+
+    @Test
+    public void testContentTypeIntValues() {
+        assertEquals(0, Encryption.ContentType.FILE.value);
+        assertEquals(1, Encryption.ContentType.THUMBNAIL.value);
+        assertEquals(2, Encryption.ContentType.NOTE.value);
+    }
+
+    @Test
+    public void testSaltLengthConstant() {
+        // Salt length used in encryption
+        assertEquals(16, Encryption.SALT_LENGTH);
+    }
+
+    @Test
+    public void testDirHashLengthConstant() {
+        // Directory hash length constant
+        assertEquals(8, Encryption.DIR_HASH_LENGTH);
+    }
+
+    @Test
+    public void testBiometricsAliasConstant() {
+        // Biometrics key alias constant
+        assertEquals("vault_key", Encryption.BIOMETRICS_ALIAS);
+    }
 }

@@ -158,6 +158,7 @@
     <string name="index_generated">Index generated for %1$d files</string>
     <string name="index_generate_error">Failed to generate index</string>
     <string name="index_generate_cancelled">Index generation cancelled</string>
+    <string name="index_generate_cancelled_partial">Cancelled. Progress saved: %1$d files indexed</string>
 
     <string name="select_destination">Select destination:</string>
     <string name="use_other_folder">Use other folder</string>
