@@ -686,16 +686,6 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                 }
             } else {
                 menuInflater.inflate(R.menu.menu_main_selection_dir, menu);
-                // Show "Generate Index" only when exactly one folder is selected
-                MenuItem generateIndexItem = menu.findItem(R.id.generate_index);
-                if (generateIndexItem != null) {
-                    boolean showGenerateIndex = false;
-                    List<GalleryFile> selectedFiles = galleryGridAdapter.getSelectedFiles();
-                    if (selectedFiles.size() == 1 && selectedFiles.get(0).isDirectory()) {
-                        showGenerateIndex = true;
-                    }
-                    generateIndexItem.setVisible(showGenerateIndex);
-                }
             }
         } else {
             if (galleryViewModel.isRootDir()) {
