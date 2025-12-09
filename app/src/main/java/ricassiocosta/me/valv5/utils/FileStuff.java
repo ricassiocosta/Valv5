@@ -50,7 +50,6 @@ import ricassiocosta.me.valv5.data.GalleryFile;
 import ricassiocosta.me.valv5.data.Password;
 import ricassiocosta.me.valv5.encryption.Encryption;
 import ricassiocosta.me.valv5.encryption.FolderNameCache;
-import ricassiocosta.me.valv5.encryption.FolderNameCache;
 import ricassiocosta.me.valv5.exception.InvalidPasswordException;
 import ricassiocosta.me.valv5.security.SecureLog;
 
