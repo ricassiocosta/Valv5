@@ -1156,6 +1156,10 @@ public class Encryption {
         fos.close();
         
         // Clean up sensitive data
+        SecureMemoryManager.getInstance().wipeNow(plaintext);
+        SecureMemoryManager.getInstance().wipeNow(salt);
+        SecureMemoryManager.getInstance().wipeNow(ivBytes);
+        SecureMemoryManager.getInstance().wipeNow(aad);
         SecureMemoryManager.getInstance().wipeNow(ciphertext);
         SecureMemoryManager.getInstance().wipeNow(contentData);
         try {
