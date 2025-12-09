@@ -27,11 +27,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import ricassiocosta.me.valv5.adapters.GalleryGridAdapter;
+import ricassiocosta.me.valv5.data.FileType;
 import ricassiocosta.me.valv5.data.GalleryFile;
 import ricassiocosta.me.valv5.data.Password;
 import ricassiocosta.me.valv5.data.UniqueLinkedList;
 import ricassiocosta.me.valv5.encryption.Encryption;
 import ricassiocosta.me.valv5.exception.InvalidPasswordException;
+import ricassiocosta.me.valv5.index.IndexManager;
 import ricassiocosta.me.valv5.security.SecureMemoryManager;
 import ricassiocosta.me.valv5.utils.FileStuff;
 import ricassiocosta.me.valv5.utils.Settings;
@@ -131,12 +133,40 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
         setClickListeners();
 
         if (!galleryViewModel.isInitialised()) {
+            // Load index if available (for faster filtering)
+            loadIndexIfAvailable();
+            
             // Start with RANDOM order - enables lazy loading
             orderBy = ORDER_BY_RANDOM;
             findAllFilesLazy();
         }
 
         initViewModels();
+    }
+    
+    /**
+     * Load the index from disk if available. This enables fast filtering without decryption.
+     */
+    private void loadIndexIfAvailable() {
+        FragmentActivity activity = getActivity();
+        if (activity == null) return;
+        
+        char[] password = Password.getInstance().getPassword();
+        if (password == null) return;
+        
+        List<Uri> rootDirs = settings.getGalleryDirectoriesAsUri(true);
+        if (rootDirs.isEmpty()) return;
+        
+        Uri rootUri = rootDirs.get(0);
+        
+        // Load index in background to not block UI
+        new Thread(() -> {
+            IndexManager indexManager = IndexManager.getInstance();
+            boolean loaded = indexManager.loadIndex(activity, rootUri, password);
+            if (loaded) {
+                SecureLog.d(TAG, "Index loaded successfully with " + indexManager.getEntryCount() + " entries");
+            }
+        }).start();
     }
 
     private void setClickListeners() {
@@ -525,7 +555,8 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
         List<GalleryFile> filesToHide = new ArrayList<>();
         
         for (GalleryFile f : newFiles) {
-            if (activeFilter != FILTER_ALL && !f.isDirectory() && f.getFileType().type != activeFilter) {
+            int fileType = getFileTypeFromIndexOrFile(f);
+            if (activeFilter != FILTER_ALL && !f.isDirectory() && fileType != activeFilter) {
                 // File doesn't match filter
                 filesToHide.add(f);
             } else {
@@ -550,6 +581,39 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
                 galleryViewModel.getHiddenFiles().addAll(filesToHide);
             }
         }
+    }
+    
+    /**
+     * Get file type from index cache if available, otherwise fall back to GalleryFile.getFileType().
+     * This avoids expensive decryption for filtering when index is loaded.
+     */
+    private int getFileTypeFromIndexOrFile(GalleryFile f) {
+        if (f.isDirectory()) {
+            return FileType.TYPE_DIRECTORY;
+        }
+        
+        // Try to get type from index cache first (fast path)
+        IndexManager indexManager = IndexManager.getInstance();
+        if (indexManager.isLoaded()) {
+            int indexedType = indexManager.getType(f.getEncryptedName());
+            if (indexedType != -1) {
+                // Also update the GalleryFile's overridden type for consistency
+                FileType fileType = FileType.fromTypeAndVersion(indexedType, f.getVersion());
+                if (fileType != null) {
+                    f.setOverriddenFileType(fileType);
+                }
+                return indexedType;
+            }
+        }
+        
+        // Fall back to GalleryFile type (may be placeholder for V5 files)
+        FileType fileType = f.getFileType();
+        if (fileType != null) {
+            return fileType.type;
+        }
+        
+        // Default to image type if unable to determine
+        return FileType.TYPE_IMAGE;
     }
     
     /**

@@ -28,4 +28,9 @@
         android:icon="@drawable/outline_drive_file_move_24"
         android:title="@string/gallery_move_selected_files"
         app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/generate_index"
+        android:title="@string/menu_generate_index"
+        android:visible="false"
+        app:showAsAction="never" />
 </menu>

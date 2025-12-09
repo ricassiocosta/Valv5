@@ -50,6 +50,7 @@ import ricassiocosta.me.valv5.data.GalleryFile;
 import ricassiocosta.me.valv5.data.Password;
 import ricassiocosta.me.valv5.encryption.Encryption;
 import ricassiocosta.me.valv5.encryption.FolderNameCache;
+import ricassiocosta.me.valv5.encryption.FolderNameCache;
 import ricassiocosta.me.valv5.exception.InvalidPasswordException;
 import ricassiocosta.me.valv5.security.SecureLog;
 
@@ -108,6 +109,7 @@ public class FileStuff {
             }
             
             // V5 only: files have no extension - just 32-char alphanumeric random name
+            // Files starting with "." (like index files) are automatically excluded
             boolean isV5File = !name.contains(".") && name.matches("[a-zA-Z0-9]{32}");
 
             if (isV5File) {

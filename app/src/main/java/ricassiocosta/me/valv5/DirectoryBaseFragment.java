@@ -63,6 +63,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import ricassiocosta.me.valv5.adapters.GalleryGridAdapter;
 import ricassiocosta.me.valv5.adapters.GalleryPagerAdapter;
@@ -72,6 +73,7 @@ import ricassiocosta.me.valv5.data.Password;
 import ricassiocosta.me.valv5.encryption.Encryption;
 import ricassiocosta.me.valv5.exception.InvalidPasswordException;
 import ricassiocosta.me.valv5.databinding.FragmentDirectoryBinding;
+import ricassiocosta.me.valv5.index.IndexManager;
 import ricassiocosta.me.valv5.security.SecureMemoryManager;
 import ricassiocosta.me.valv5.utils.Dialogs;
 import ricassiocosta.me.valv5.utils.FileStuff;
@@ -660,6 +662,16 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         if (galleryViewModel.isInSelectionMode()) {
             if (galleryViewModel.isRootDir()) {
                 menuInflater.inflate(R.menu.menu_main_selection_root, menu);
+                // Show "Generate Index" only when exactly one folder is selected
+                MenuItem generateIndexItem = menu.findItem(R.id.generate_index);
+                if (generateIndexItem != null) {
+                    boolean showGenerateIndex = false;
+                    List<GalleryFile> selectedFiles = galleryGridAdapter.getSelectedFiles();
+                    if (selectedFiles.size() == 1 && selectedFiles.get(0).isDirectory()) {
+                        showGenerateIndex = true;
+                    }
+                    generateIndexItem.setVisible(showGenerateIndex);
+                }
             } else if (galleryViewModel.isAllFolder()) {
                 menuInflater.inflate(R.menu.menu_main_selection_all, menu);
                 // Only show "Open in folder" when exactly one file is selected
@@ -674,6 +686,16 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                 }
             } else {
                 menuInflater.inflate(R.menu.menu_main_selection_dir, menu);
+                // Show "Generate Index" only when exactly one folder is selected
+                MenuItem generateIndexItem = menu.findItem(R.id.generate_index);
+                if (generateIndexItem != null) {
+                    boolean showGenerateIndex = false;
+                    List<GalleryFile> selectedFiles = galleryGridAdapter.getSelectedFiles();
+                    if (selectedFiles.size() == 1 && selectedFiles.get(0).isDirectory()) {
+                        showGenerateIndex = true;
+                    }
+                    generateIndexItem.setVisible(showGenerateIndex);
+                }
             }
         } else {
             if (galleryViewModel.isRootDir()) {
@@ -779,6 +801,9 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
             return true;
         } else if (id == R.id.open_in_folder) {
             openSelectedFileInFolder();
+            return true;
+        } else if (id == R.id.generate_index) {
+            showGenerateIndexDialog();
             return true;
         }
 
@@ -968,6 +993,89 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                 }
             }).start();
         });
+    }
+
+    /**
+     * Show dialog to generate index for all files in the selected folder.
+     * Only available when a single folder is selected.
+     */
+    private void showGenerateIndexDialog() {
+        FragmentActivity activity = getActivity();
+        if (activity == null) {
+            return;
+        }
+
+        // Get the selected folder
+        List<GalleryFile> selectedFiles = galleryGridAdapter.getSelectedFiles();
+        if (selectedFiles.size() != 1 || !selectedFiles.get(0).isDirectory()) {
+            Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_error));
+            return;
+        }
+
+        GalleryFile selectedFolder = selectedFiles.get(0);
+        Uri folderUri = selectedFolder.getUri();
+
+        // Show progress dialog
+        android.app.ProgressDialog progressDialog = new android.app.ProgressDialog(activity);
+        progressDialog.setTitle(getString(R.string.index_generating));
+        progressDialog.setMessage(getString(R.string.index_generating_progress, 0));
+        progressDialog.setProgressStyle(android.app.ProgressDialog.STYLE_HORIZONTAL);
+        progressDialog.setIndeterminate(false);
+        progressDialog.setMax(100);
+        progressDialog.setCancelable(true);
+        progressDialog.setProgress(0);
+
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+
+        progressDialog.setOnCancelListener(dialog -> {
+            cancelled.set(true);
+            Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled));
+        });
+
+        progressDialog.show();
+
+        // Run index generation in background
+        new Thread(() -> {
+            char[] password = Password.getInstance().getPassword();
+            if (password == null) {
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    progressDialog.dismiss();
+                    if (isAdded()) {
+                        Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_error));
+                    }
+                });
+                return;
+            }
+
+            IndexManager indexManager = IndexManager.getInstance();
+            int result = indexManager.generateIndex(
+                    activity,
+                    folderUri,
+                    password,
+                    (progressPercent) -> {
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            if (progressDialog.isShowing()) {
+                                progressDialog.setMessage(getString(R.string.index_generating_progress, (int) progressPercent));
+                                progressDialog.setProgress((int) progressPercent);
+                            }
+                        });
+                    },
+                    cancelled);
+
+            new Handler(Looper.getMainLooper()).post(() -> {
+                progressDialog.dismiss();
+                if (!isAdded() || getActivity() == null) {
+                    return;
+                }
+                if (cancelled.get()) {
+                    // Already showed cancellation message
+                } else if (result >= 0) {
+                    Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generated, result));
+                } else {
+                    Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_error));
+                }
+            });
+        }).start();
     }
 
     @Override
