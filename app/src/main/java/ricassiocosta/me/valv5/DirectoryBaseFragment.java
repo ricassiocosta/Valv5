@@ -63,6 +63,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import ricassiocosta.me.valv5.adapters.GalleryGridAdapter;
@@ -120,6 +123,9 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     GalleryPagerAdapter galleryPagerAdapter;
     Settings settings;
 
+    // Thread pool for background tasks with proper lifecycle management
+    private ExecutorService executorService;
+
     int orderBy = ORDER_BY_NEWEST;
 
     @Override
@@ -153,6 +159,9 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     @Override
     public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+
+        // Initialize executor service for background tasks
+        executorService = Executors.newFixedThreadPool(1);
 
         passwordViewModel = new ViewModelProvider(requireActivity()).get(PasswordViewModel.class);
         navigationViewModel = new ViewModelProvider(requireActivity()).get(NavigationViewModel.class);
@@ -1024,53 +1033,61 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
 
         progressDialog.show();
 
-        // Run index generation in background
-        new Thread(() -> {
-            char[] password = Password.getInstance().getPassword();
-            if (password == null) {
+        // Run index generation in background using managed executor service
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.submit(() -> {
+                // Check if fragment is still attached before accessing context/activity
+                if (!isAdded()) {
+                    progressDialog.dismiss();
+                    return;
+                }
+
+                char[] password = Password.getInstance().getPassword();
+                if (password == null) {
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        progressDialog.dismiss();
+                        if (isAdded()) {
+                            Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_error));
+                        }
+                    });
+                    return;
+                }
+
+                IndexManager indexManager = IndexManager.getInstance();
+                int result = indexManager.generateIndex(
+                        activity,
+                        folderUri,
+                        password,
+                        (progressPercent) -> {
+                            new Handler(Looper.getMainLooper()).post(() -> {
+                                if (isAdded() && progressDialog.isShowing()) {
+                                    progressDialog.setMessage(getString(R.string.index_generating_progress, (int) progressPercent));
+                                    progressDialog.setProgress((int) progressPercent);
+                                }
+                            });
+                        },
+                        cancelled);
+
                 new Handler(Looper.getMainLooper()).post(() -> {
                     progressDialog.dismiss();
-                    if (isAdded()) {
+                    if (!isAdded() || getActivity() == null) {
+                        return;
+                    }
+                    if (cancelled.get()) {
+                        // Show message indicating partial progress was saved
+                        if (result > 0) {
+                            Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled_partial, result));
+                        } else {
+                            Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled));
+                        }
+                    } else if (result >= 0) {
+                        Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generated, result));
+                    } else {
                         Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_error));
                     }
                 });
-                return;
-            }
-
-            IndexManager indexManager = IndexManager.getInstance();
-            int result = indexManager.generateIndex(
-                    activity,
-                    folderUri,
-                    password,
-                    (progressPercent) -> {
-                        new Handler(Looper.getMainLooper()).post(() -> {
-                            if (progressDialog.isShowing()) {
-                                progressDialog.setMessage(getString(R.string.index_generating_progress, (int) progressPercent));
-                                progressDialog.setProgress((int) progressPercent);
-                            }
-                        });
-                    },
-                    cancelled);
-
-            new Handler(Looper.getMainLooper()).post(() -> {
-                progressDialog.dismiss();
-                if (!isAdded() || getActivity() == null) {
-                    return;
-                }
-                if (cancelled.get()) {
-                    // Show message indicating partial progress was saved
-                    if (result > 0) {
-                        Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled_partial, result));
-                    } else {
-                        Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled));
-                    }
-                } else if (result >= 0) {
-                    Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generated, result));
-                } else {
-                    Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_error));
-                }
             });
-        }).start();
+        }
     }
 
     @Override
@@ -1126,6 +1143,18 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         }
         if (galleryGridAdapter != null) {
             galleryGridAdapter.shutdown();
+        }
+        
+        // Shutdown executor service to stop background threads
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.shutdown();
+            try {
+                if (!executorService.awaitTermination(2, TimeUnit.SECONDS)) {
+                    executorService.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executorService.shutdownNow();
+            }
         }
         
         // Note: We do NOT call SecureMemoryManager.onFolderChanged() here

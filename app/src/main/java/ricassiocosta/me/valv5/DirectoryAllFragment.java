@@ -160,13 +160,19 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
         Uri rootUri = rootDirs.get(0);
         
         // Load index in background to not block UI
-        new Thread(() -> {
-            IndexManager indexManager = IndexManager.getInstance();
-            boolean loaded = indexManager.loadIndex(activity, rootUri, password);
-            if (loaded) {
-                SecureLog.d(TAG, "Index loaded successfully with " + indexManager.getEntryCount() + " entries");
-            }
-        }).start();
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.submit(() -> {
+                // Check if fragment is still attached before accessing activity/context
+                if (!isAdded()) {
+                    return;
+                }
+                IndexManager indexManager = IndexManager.getInstance();
+                boolean loaded = indexManager.loadIndex(activity, rootUri, password);
+                if (loaded && isAdded()) {
+                    SecureLog.d(TAG, "Index loaded successfully with " + indexManager.getEntryCount() + " entries");
+                }
+            });
+        }
     }
 
     private void setClickListeners() {
