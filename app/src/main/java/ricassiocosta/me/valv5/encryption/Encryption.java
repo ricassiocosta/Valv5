@@ -380,7 +380,6 @@ public class Encryption {
         private final String originalFileName, inputString;
         private final int fileType;
         private final ContentType contentType;
-        private final String contentTypeString; // For INDEX and other custom types
         private final RelatedFile[] relatedFiles;
         public String thumbFileName;
         public CompositeStreams compositeStreams;
@@ -393,7 +392,6 @@ public class Encryption {
             this.inputString = null;
             this.fileType = -1;
             this.contentType = ContentType.FILE;
-            this.contentTypeString = null;
             this.relatedFiles = null;
         }
 
@@ -405,7 +403,6 @@ public class Encryption {
             this.originalFileName = "";
             this.fileType = -1;
             this.contentType = ContentType.FILE;
-            this.contentTypeString = null;
             this.relatedFiles = null;
         }
 
@@ -417,7 +414,6 @@ public class Encryption {
             this.inputString = null;
             this.fileType = -1;
             this.contentType = ContentType.FILE;
-            this.contentTypeString = null;
             this.relatedFiles = null;
         }
 
@@ -429,7 +425,6 @@ public class Encryption {
             this.inputString = null;
             this.fileType = fileType;
             this.contentType = ContentType.FILE;
-            this.contentTypeString = null;
             this.relatedFiles = null;
         }
 
@@ -441,7 +436,6 @@ public class Encryption {
             this.inputString = null;
             this.fileType = fileType;
             this.contentType = contentType;
-            this.contentTypeString = null;
             this.relatedFiles = null;
         }
 
@@ -453,20 +447,7 @@ public class Encryption {
             this.inputString = null;
             this.fileType = fileType;
             this.contentType = contentType;
-            this.contentTypeString = null;
             this.relatedFiles = relatedFiles;
-        }
-
-        private Streams(@NonNull InputStream inputStream, @NonNull SecretKey secretKey, @NonNull String originalFileName, int fileType, @NonNull String contentTypeString) {
-            this.inputStream = inputStream;
-            this.outputStream = null;
-            this.secretKey = secretKey;
-            this.originalFileName = originalFileName;
-            this.inputString = null;
-            this.fileType = fileType;
-            this.contentType = ContentType.FILE;
-            this.contentTypeString = contentTypeString;
-            this.relatedFiles = null;
         }
 
         public String getInputString() {
@@ -567,38 +548,6 @@ public class Encryption {
 
         public ContentType getContentType() {
             return contentType;
-        }
-
-        /**
-         * Get the content type as a string.
-         * Returns the custom contentTypeString if set (e.g., "INDEX"),
-         * otherwise returns the enum name (e.g., "FILE").
-         */
-        @Nullable
-        public String getContentTypeString() {
-            if (contentTypeString != null) {
-                return contentTypeString;
-            }
-            return contentType != null ? contentType.name() : null;
-        }
-
-        /**
-         * Get the file content stream for V5 composite files.
-         * Useful for reading index or other composite file content.
-         * 
-         * @return InputStream for file section, or null if not available
-         */
-        @Nullable
-        public InputStream getCompositeFileStream() {
-            if (compositeStreams != null) {
-                try {
-                    return compositeStreams.getFileSection();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    return null;
-                }
-            }
-            return inputStream;
         }
 
         @Nullable
@@ -1060,128 +1009,6 @@ public class Encryption {
     }
     
     /**
-     * Write an encrypted index file.
-     * Uses the same V5 format as regular files but with contentType = "INDEX".
-     * The index content is stored in the FILE section.
-     * 
-     * @param context FragmentActivity context
-     * @param contentInputStream InputStream containing the index JSON content
-     * @param contentSize Size of the content in bytes
-     * @param outputFile The DocumentFile to write to
-     * @param password Encryption password
-     */
-    public static void writeIndexFile(
-            FragmentActivity context,
-            InputStream contentInputStream,
-            long contentSize,
-            DocumentFile outputFile,
-            char[] password) throws GeneralSecurityException, IOException, JSONException {
-        
-        SecureRandom sr = new SecureRandom();
-        Settings settings = Settings.getInstance(context);
-        boolean useArgon2 = settings.useArgon2();
-        int ITERATION_COUNT = settings.getIterationCount();
-        int storedIterationCount = ITERATION_COUNT | AEAD_FLAG | (useArgon2 ? ARGON2_FLAG : 0);
-
-        // Generate header components
-        byte[] versionBytes = toByteArray(ENCRYPTION_VERSION_5);
-        byte[] salt = new byte[SALT_LENGTH];
-        byte[] ivBytes = new byte[IV_LENGTH];
-        byte[] iterationCountBytes = toByteArray(storedIterationCount);
-        sr.nextBytes(salt);
-        sr.nextBytes(ivBytes);
-
-        // Derive key using the appropriate KDF
-        SecretKey secretKey = deriveKey(password, salt, ITERATION_COUNT, useArgon2);
-
-        // Build plaintext content
-        ByteArrayOutputStream plaintextBuffer = new ByteArrayOutputStream();
-        
-        // Build metadata JSON - INDEX content type as string
-        JSONObject json = new JSONObject();
-        json.put(JSON_ORIGINAL_NAME, "");  // No original name for index
-        json.put(JSON_FILE_TYPE, -1);      // No file type
-        json.put(JSON_CONTENT_TYPE, "INDEX");  // String content type for index
-
-        // Record sections - only FILE section for index
-        JSONObject sectionsObj = new JSONObject();
-        sectionsObj.put("FILE", true);
-        sectionsObj.put("THUMBNAIL", false);
-        sectionsObj.put("NOTE", false);
-        json.put("sections", sectionsObj);
-
-        // Write metadata with newline delimiters
-        plaintextBuffer.write(("\n" + json + "\n").getBytes(StandardCharsets.UTF_8));
-
-        // Write FILE section containing the index content
-        SectionWriter sectionWriter = new SectionWriter(plaintextBuffer);
-        byte[] contentData = readAllBytes(contentInputStream);
-        sectionWriter.writeFileSection(new ByteArrayInputStream(contentData), contentData.length);
-
-        // Write END marker
-        sectionWriter.writeEndMarker();
-
-        byte[] plaintext = plaintextBuffer.toByteArray();
-
-        // Encrypt with ChaCha20-Poly1305 AEAD
-        Cipher cipher = Cipher.getInstance(CIPHER_AEAD);
-        AlgorithmParameterSpec ivSpec = new IvParameterSpec(ivBytes);
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec);
-        
-        // Use header as AAD (Associated Authenticated Data)
-        byte[] aad = new byte[4 + SALT_LENGTH + IV_LENGTH + 4];
-        System.arraycopy(versionBytes, 0, aad, 0, 4);
-        System.arraycopy(salt, 0, aad, 4, SALT_LENGTH);
-        System.arraycopy(ivBytes, 0, aad, 4 + SALT_LENGTH, IV_LENGTH);
-        System.arraycopy(iterationCountBytes, 0, aad, 4 + SALT_LENGTH + IV_LENGTH, 4);
-        cipher.updateAAD(aad);
-        
-        byte[] ciphertext = cipher.doFinal(plaintext);
-
-        // Open output stream and write with proper resource management
-        OutputStream fos = null;
-        try {
-            fos = new BufferedOutputStream(
-                    context.getContentResolver().openOutputStream(outputFile.getUri()),
-                    1024 * 32);
-
-            // Write header
-            fos.write(versionBytes);
-            fos.write(salt);
-            fos.write(ivBytes);
-            fos.write(iterationCountBytes);
-            
-            // Write encrypted content (includes Poly1305 tag at end)
-            fos.write(ciphertext);
-            
-            fos.flush();
-        } finally {
-            if (fos != null) {
-                try {
-                    fos.close();
-                } catch (IOException ignored) {
-                    // Best effort close
-                }
-            }
-        }
-        
-        // Clean up sensitive data
-        SecureMemoryManager.getInstance().wipeNow(plaintext);
-        SecureMemoryManager.getInstance().wipeNow(salt);
-        SecureMemoryManager.getInstance().wipeNow(ivBytes);
-        SecureMemoryManager.getInstance().wipeNow(aad);
-        SecureMemoryManager.getInstance().wipeNow(ciphertext);
-        SecureMemoryManager.getInstance().wipeNow(contentData);
-        try {
-            secretKey.destroy();
-        } catch (DestroyFailedException e) {
-            // Ignore
-        }
-        
-        SecureLog.d(TAG, "writeIndexFile: wrote index file, size=" + contentData.length);
-    }
-    
-    /**
      * Helper to read all bytes from an InputStream.
      */
     private static byte[] readAllBytes(InputStream is) throws IOException {
@@ -1336,26 +1163,12 @@ public class Encryption {
             JSONObject json = new JSONObject(jsonStr);
             String originalName = json.has(JSON_ORIGINAL_NAME) ? json.getString(JSON_ORIGINAL_NAME) : "";
             int fileType = json.has(JSON_FILE_TYPE) ? json.getInt(JSON_FILE_TYPE) : -1;
-            
-            // Read contentType - can be string (INDEX) or int (FILE=0, THUMBNAIL=1, NOTE=2)
-            String contentTypeStr = null;
-            if (json.has(JSON_CONTENT_TYPE)) {
-                Object ctValue = json.get(JSON_CONTENT_TYPE);
-                if (ctValue instanceof String) {
-                    contentTypeStr = (String) ctValue;
-                }
-            }
 
             // Create CompositeStreams wrapper for reading V5 sections
             CompositeStreams compositeStreams = new CompositeStreams(decryptedStream);
 
             // Store metadata in a custom Streams object for compatibility
-            Streams streams;
-            if (contentTypeStr != null) {
-                streams = new Streams(decryptedStream, secretKey, originalName, fileType, contentTypeStr);
-            } else {
-                streams = new Streams(decryptedStream, secretKey, originalName, fileType, ContentType.FILE, null);
-            }
+            Streams streams = new Streams(decryptedStream, secretKey, originalName, fileType, ContentType.FILE, null);
             streams.compositeStreams = compositeStreams;
             return streams;
         }
@@ -1417,26 +1230,12 @@ public class Encryption {
             JSONObject json = new JSONObject(jsonStr);
             String originalName = json.has(JSON_ORIGINAL_NAME) ? json.getString(JSON_ORIGINAL_NAME) : "";
             int fileType = json.has(JSON_FILE_TYPE) ? json.getInt(JSON_FILE_TYPE) : -1;
-            
-            // Read contentType - can be string (INDEX) or int (FILE=0, THUMBNAIL=1, NOTE=2)
-            String contentTypeStr = null;
-            if (json.has(JSON_CONTENT_TYPE)) {
-                Object ctValue = json.get(JSON_CONTENT_TYPE);
-                if (ctValue instanceof String) {
-                    contentTypeStr = (String) ctValue;
-                }
-            }
 
             // Create CompositeStreams wrapper for reading V5 sections
             CompositeStreams compositeStreams = new CompositeStreams(plaintextStream);
 
             // Store metadata in a custom Streams object for compatibility
-            Streams streams;
-            if (contentTypeStr != null) {
-                streams = new Streams(plaintextStream, secretKey, originalName, fileType, contentTypeStr);
-            } else {
-                streams = new Streams(plaintextStream, secretKey, originalName, fileType, ContentType.FILE, null);
-            }
+            Streams streams = new Streams(plaintextStream, secretKey, originalName, fileType, ContentType.FILE, null);
             streams.compositeStreams = compositeStreams;
             return streams;
         }
