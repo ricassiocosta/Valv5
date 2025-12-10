@@ -376,13 +376,20 @@ public class IndexManager {
         try (InputStream is = context.getContentResolver().openInputStream(fileUri)) {
             if (is == null) return false;
             
-            Encryption.Streams streams = Encryption.getCipherInputStream(is, password, false, Encryption.ENCRYPTION_VERSION_5);
+            Encryption.Streams streams = null;
             try {
+                streams = Encryption.getCipherInputStream(is, password, false, Encryption.ENCRYPTION_VERSION_5);
                 // Check content type from metadata
                 String contentType = streams.getContentTypeString();
                 return CONTENT_TYPE_INDEX.equals(contentType);
             } finally {
-                streams.close();
+                if (streams != null) {
+                    try {
+                        streams.close();
+                    } catch (Exception ignored) {
+                        // Best effort close
+                    }
+                }
             }
             
         } catch (Exception e) {
@@ -398,8 +405,10 @@ public class IndexManager {
         try (InputStream is = context.getContentResolver().openInputStream(fileUri)) {
             if (is == null) return false;
             
-            Encryption.Streams streams = Encryption.getCipherInputStream(is, password, false, Encryption.ENCRYPTION_VERSION_5);
+            Encryption.Streams streams = null;
             try {
+                streams = Encryption.getCipherInputStream(is, password, false, Encryption.ENCRYPTION_VERSION_5);
+                
                 // Read the file section which contains the JSON index
                 InputStream fileStream = streams.getCompositeFileStream();
                 if (fileStream == null) {
@@ -437,7 +446,13 @@ public class IndexManager {
                 SecureLog.d(TAG, "parseIndexFile: parsed version " + version + " with " + indexCache.size() + " entries");
                 return true;
             } finally {
-                streams.close();
+                if (streams != null) {
+                    try {
+                        streams.close();
+                    } catch (Exception ignored) {
+                        // Best effort close
+                    }
+                }
             }
             
         } catch (Exception e) {
@@ -750,24 +765,29 @@ public class IndexManager {
      * @return File type, or -1 if error
      */
     private int readFileType(@NonNull Context context, @NonNull Uri fileUri, @NonNull char[] password) {
-        try {
-            InputStream is = context.getContentResolver().openInputStream(fileUri);
+        try (InputStream is = context.getContentResolver().openInputStream(fileUri)) {
             if (is == null) return -1;
             
-            Encryption.Streams streams = Encryption.getCipherInputStream(is, password, false, Encryption.ENCRYPTION_VERSION_5);
-            int fileType = streams.getFileType();
-            
-            // Skip index files
-            if (CONTENT_TYPE_INDEX.equals(streams.getContentTypeString())) {
-                streams.close();
-                is.close();
-                return -1;
+            Encryption.Streams streams = null;
+            try {
+                streams = Encryption.getCipherInputStream(is, password, false, Encryption.ENCRYPTION_VERSION_5);
+                int fileType = streams.getFileType();
+                
+                // Skip index files
+                if (CONTENT_TYPE_INDEX.equals(streams.getContentTypeString())) {
+                    return -1;
+                }
+                
+                return fileType;
+            } finally {
+                if (streams != null) {
+                    try {
+                        streams.close();
+                    } catch (Exception ignored) {
+                        // Best effort close
+                    }
+                }
             }
-            
-            streams.close();
-            is.close();
-            
-            return fileType;
             
         } catch (Exception e) {
             // File might be corrupted or wrong password
