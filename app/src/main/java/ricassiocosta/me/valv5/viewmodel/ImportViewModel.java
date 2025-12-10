@@ -39,7 +39,6 @@ import ricassiocosta.me.valv5.data.GalleryFile;
 import ricassiocosta.me.valv5.data.Password;
 import ricassiocosta.me.valv5.data.ProgressData;
 import ricassiocosta.me.valv5.encryption.Encryption;
-import ricassiocosta.me.valv5.index.IndexManager;
 import ricassiocosta.me.valv5.interfaces.IOnImportDone;
 import ricassiocosta.me.valv5.interfaces.IOnProgress;
 
@@ -225,11 +224,6 @@ public class ImportViewModel extends ViewModel {
                     errors++;
                 } else {
                     importedFiles.add(GalleryFile.asFile(new ricassiocosta.me.valv5.data.CursorFile(importedFile.getName(), importedFile.getUri(), importedFile.lastModified(), importedFile.getType(), importedFile.length()), null, null));
-                    
-                    // Update index with the new file
-                    int fileType = Encryption.getFileTypeFromMime(file.getType());
-                    IndexManager.getInstance().addEntry(importedFile.getName(), fileType);
-                    
                     if (deleteAfterImport) {
                         file.delete();
                     }
@@ -256,21 +250,8 @@ public class ImportViewModel extends ViewModel {
                 } else {
                     onProgress.onProgress(text.getSize());
                     importedFiles.add(GalleryFile.asFile(new ricassiocosta.me.valv5.data.CursorFile(importedFile.getName(), importedFile.getUri(), importedFile.lastModified(), importedFile.getType(), importedFile.length()), null, null));
-                    
-                    // Update index with the new text file
-                    IndexManager.getInstance().addEntry(importedFile.getName(), ricassiocosta.me.valv5.data.FileType.TYPE_TEXT);
                 }
             }
-            
-            // Save index if it has been updated
-            IndexManager indexManager = IndexManager.getInstance();
-            if (indexManager.isDirty() && indexManager.isLoaded()) {
-                // Get root URI from current directory by going up to root
-                // Note: The index will be saved when the user returns to the root folder
-                // or explicitly generates the index
-                SecureLog.d(TAG, "startImport: index has " + indexManager.getEntryCount() + " entries (dirty, will be saved later)");
-            }
-            
             Uri importToUri1 = getImportToUri();
             boolean sameDir = sameDirectory;
             if (onImportDoneBottomSheet != null) {

@@ -1,6 +1,6 @@
 /*
- * Valv5
- * Copyright (c) 2025 ricassiocosta.
+ * Valv-Android
+ * Copyright (C) 2024 Arctosoft AB
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
