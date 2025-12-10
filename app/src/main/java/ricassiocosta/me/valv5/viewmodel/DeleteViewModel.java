@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import ricassiocosta.me.valv5.data.GalleryFile;
 import ricassiocosta.me.valv5.data.ProgressData;
+import ricassiocosta.me.valv5.index.IndexManager;
 import ricassiocosta.me.valv5.interfaces.IOnFileOperationDone;
 import ricassiocosta.me.valv5.interfaces.IOnProgress;
 import ricassiocosta.me.valv5.utils.FileStuff;
@@ -129,6 +130,13 @@ public class DeleteViewModel extends ViewModel {
                             deletedFiles.add(galleryFile);
                             boolean deletedThumb = FileStuff.deleteFile(activity, galleryFile.getThumbUri());
                             boolean deletedNote = FileStuff.deleteFile(activity, galleryFile.getNoteUri());
+                            
+                            // Remove from index
+                            String fileName = galleryFile.getEncryptedName();
+                            if (fileName != null) {
+                                IndexManager.getInstance().removeEntry(fileName);
+                            }
+                            
                             onProgress.onProgress(bytesDeleted.addAndGet(galleryFile.getSize()));
                         }
                     }

@@ -63,6 +63,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import ricassiocosta.me.valv5.adapters.GalleryGridAdapter;
 import ricassiocosta.me.valv5.adapters.GalleryPagerAdapter;
@@ -72,6 +76,7 @@ import ricassiocosta.me.valv5.data.Password;
 import ricassiocosta.me.valv5.encryption.Encryption;
 import ricassiocosta.me.valv5.exception.InvalidPasswordException;
 import ricassiocosta.me.valv5.databinding.FragmentDirectoryBinding;
+import ricassiocosta.me.valv5.index.IndexManager;
 import ricassiocosta.me.valv5.security.SecureMemoryManager;
 import ricassiocosta.me.valv5.utils.Dialogs;
 import ricassiocosta.me.valv5.utils.FileStuff;
@@ -118,6 +123,9 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     GalleryPagerAdapter galleryPagerAdapter;
     Settings settings;
 
+    // Thread pool for background tasks with proper lifecycle management
+    private ExecutorService executorService;
+
     int orderBy = ORDER_BY_NEWEST;
 
     @Override
@@ -151,6 +159,9 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     @Override
     public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+
+        // Initialize executor service for background tasks
+        executorService = Executors.newFixedThreadPool(1);
 
         passwordViewModel = new ViewModelProvider(requireActivity()).get(PasswordViewModel.class);
         navigationViewModel = new ViewModelProvider(requireActivity()).get(NavigationViewModel.class);
@@ -660,6 +671,16 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         if (galleryViewModel.isInSelectionMode()) {
             if (galleryViewModel.isRootDir()) {
                 menuInflater.inflate(R.menu.menu_main_selection_root, menu);
+                // Show "Generate Index" only when exactly one folder is selected
+                MenuItem generateIndexItem = menu.findItem(R.id.generate_index);
+                if (generateIndexItem != null) {
+                    boolean showGenerateIndex = false;
+                    List<GalleryFile> selectedFiles = galleryGridAdapter.getSelectedFiles();
+                    if (selectedFiles.size() == 1 && selectedFiles.get(0).isDirectory()) {
+                        showGenerateIndex = true;
+                    }
+                    generateIndexItem.setVisible(showGenerateIndex);
+                }
             } else if (galleryViewModel.isAllFolder()) {
                 menuInflater.inflate(R.menu.menu_main_selection_all, menu);
                 // Only show "Open in folder" when exactly one file is selected
@@ -779,6 +800,9 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
             return true;
         } else if (id == R.id.open_in_folder) {
             openSelectedFileInFolder();
+            return true;
+        } else if (id == R.id.generate_index) {
+            showGenerateIndexDialog();
             return true;
         }
 
@@ -970,6 +994,119 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         });
     }
 
+    /**
+     * Show dialog to generate index for all files in the selected folder.
+     * Only available when a single folder is selected.
+     */
+    private void showGenerateIndexDialog() {
+        FragmentActivity activity = getActivity();
+        if (activity == null) {
+            return;
+        }
+
+        // Get the selected folder
+        List<GalleryFile> selectedFiles = galleryGridAdapter.getSelectedFiles();
+        if (selectedFiles.size() != 1 || !selectedFiles.get(0).isDirectory()) {
+            Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_error));
+            return;
+        }
+
+        GalleryFile selectedFolder = selectedFiles.get(0);
+        Uri folderUri = selectedFolder.getUri();
+
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+
+        // Create modern progress dialog using AlertDialog with custom layout
+        androidx.appcompat.app.AlertDialog.Builder builder = new androidx.appcompat.app.AlertDialog.Builder(activity);
+        builder.setTitle(getString(R.string.index_generating));
+        builder.setCancelable(true);
+        
+        // Create custom layout with progress bar
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(activity);
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        layout.setPadding(50, 30, 50, 30);
+        
+        android.widget.TextView messageView = new android.widget.TextView(activity);
+        messageView.setText(getString(R.string.index_generating_progress, 0));
+        messageView.setTextSize(14);
+        layout.addView(messageView);
+        
+        android.widget.ProgressBar progressBar = new android.widget.ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
+        progressBar.setMax(100);
+        progressBar.setProgress(0);
+        android.widget.LinearLayout.LayoutParams progressParams = new android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+        progressParams.setMargins(0, 20, 0, 0);
+        progressBar.setLayoutParams(progressParams);
+        layout.addView(progressBar);
+        
+        builder.setView(layout);
+        builder.setNegativeButton(android.R.string.cancel, (dialog, which) -> {
+            cancelled.set(true);
+            Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled));
+        });
+        
+        androidx.appcompat.app.AlertDialog progressDialog = builder.create();
+        progressDialog.show();
+
+        // Run index generation in background using managed executor service
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.submit(() -> {
+                // Check if fragment is still attached before accessing context/activity
+                if (!isAdded()) {
+                    progressDialog.dismiss();
+                    return;
+                }
+
+                char[] password = Password.getInstance().getPassword();
+                if (password == null) {
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        progressDialog.dismiss();
+                        if (isAdded()) {
+                            Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_error));
+                        }
+                    });
+                    return;
+                }
+
+                IndexManager indexManager = IndexManager.getInstance();
+                int result = indexManager.generateIndex(
+                        activity,
+                        folderUri,
+                        password,
+                        (progressPercent) -> {
+                            new Handler(Looper.getMainLooper()).post(() -> {
+                                if (isAdded() && progressDialog.isShowing()) {
+                                    messageView.setText(getString(R.string.index_generating_progress, (int) progressPercent));
+                                    progressBar.setProgress((int) progressPercent);
+                                }
+                            });
+                        },
+                        cancelled);
+
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    progressDialog.dismiss();
+                    if (!isAdded() || getActivity() == null) {
+                        return;
+                    }
+                    if (cancelled.get()) {
+                        // Show message indicating partial progress was saved
+                        if (result > 0) {
+                            Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled_partial, result));
+                        } else {
+                            Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled));
+                        }
+                    } else if (result >= 0) {
+                        Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generated, result));
+                    } else {
+                        Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_error));
+                    }
+                });
+            });
+        }
+    }
+
     @Override
     public void onStart() {
         super.onStart();
@@ -1023,6 +1160,18 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         }
         if (galleryGridAdapter != null) {
             galleryGridAdapter.shutdown();
+        }
+        
+        // Shutdown executor service to stop background threads
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.shutdown();
+            try {
+                if (!executorService.awaitTermination(2, TimeUnit.SECONDS)) {
+                    executorService.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executorService.shutdownNow();
+            }
         }
         
         // Note: We do NOT call SecureMemoryManager.onFolderChanged() here
