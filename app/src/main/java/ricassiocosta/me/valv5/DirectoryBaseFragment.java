@@ -72,6 +72,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import ricassiocosta.me.valv5.adapters.GalleryGridAdapter;
+import android.widget.ProgressBar;
+import android.widget.TextView;
+import androidx.appcompat.app.AlertDialog;
+import android.view.LayoutInflater;
+
 import ricassiocosta.me.valv5.adapters.GalleryPagerAdapter;
 import ricassiocosta.me.valv5.data.FileType;
 import ricassiocosta.me.valv5.data.GalleryFile;
@@ -1005,96 +1010,87 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         GalleryFile selectedFolder = selectedFiles.get(0);
         Uri folderUri = selectedFolder.getUri();
 
-        AtomicBoolean cancelled = new AtomicBoolean(false);
+        // Show progress dialog (AlertDialog with custom view)
+        View dialogView = LayoutInflater.from(activity).inflate(R.layout.dialog_progress, null);
+        ProgressBar progressBar = dialogView.findViewById(R.id.dialog_progress_bar);
+        TextView progressText = dialogView.findViewById(R.id.dialog_progress_text);
 
-        // Create modern progress dialog using AlertDialog with custom layout
-        androidx.appcompat.app.AlertDialog.Builder builder = new androidx.appcompat.app.AlertDialog.Builder(activity);
-        builder.setTitle(getString(R.string.index_generating));
-        builder.setCancelable(true);
-        
-        // Create custom layout with progress bar
-        android.widget.LinearLayout layout = new android.widget.LinearLayout(activity);
-        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
-        layout.setPadding(50, 30, 50, 30);
-        
-        android.widget.TextView messageView = new android.widget.TextView(activity);
-        messageView.setText(getString(R.string.index_generating_progress, 0));
-        messageView.setTextSize(14);
-        layout.addView(messageView);
-        
-        android.widget.ProgressBar progressBar = new android.widget.ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
+        progressBar.setIndeterminate(false);
         progressBar.setMax(100);
         progressBar.setProgress(0);
-        android.widget.LinearLayout.LayoutParams progressParams = new android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
-        progressParams.setMargins(0, 20, 0, 0);
-        progressBar.setLayoutParams(progressParams);
-        layout.addView(progressBar);
-        
-        builder.setView(layout);
-        builder.setNegativeButton(android.R.string.cancel, (dialog, which) -> {
+
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+
+        // Show the dialog
+        androidx.appcompat.app.AlertDialog.Builder builder = new androidx.appcompat.app.AlertDialog.Builder(activity)
+            .setTitle(getString(R.string.index_generating))
+            .setView(dialogView)
+            .setCancelable(true);
+        androidx.appcompat.app.AlertDialog progressDialog = builder.create();
+        progressDialog.setOnCancelListener(dialog -> {
             cancelled.set(true);
             Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled));
         });
-        
-        androidx.appcompat.app.AlertDialog progressDialog = builder.create();
         progressDialog.show();
 
-        // Run index generation in background using managed executor service
-        if (executorService != null && !executorService.isShutdown()) {
-            executorService.submit(() -> {
-                // Check if fragment is still attached before accessing context/activity
-                if (!isAdded()) {
-                    progressDialog.dismiss();
-                    return;
-                }
+        // Worker runnable for index generation
+        Runnable worker = () -> {
+            // Check if fragment is still attached before accessing context/activity
+            if (!isAdded()) {
+                progressDialog.dismiss();
+                return;
+            }
 
-                char[] password = Password.getInstance().getPassword();
-                if (password == null) {
-                    new Handler(Looper.getMainLooper()).post(() -> {
-                        progressDialog.dismiss();
-                        if (isAdded()) {
-                            Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_error));
-                        }
-                    });
-                    return;
-                }
-
-                IndexManager indexManager = IndexManager.getInstance();
-                int result = indexManager.generateIndex(
-                        activity,
-                        folderUri,
-                        password,
-                        (progressPercent) -> {
-                            new Handler(Looper.getMainLooper()).post(() -> {
-                                if (isAdded() && progressDialog.isShowing()) {
-                                    messageView.setText(getString(R.string.index_generating_progress, (int) progressPercent));
-                                    progressBar.setProgress((int) progressPercent);
-                                }
-                            });
-                        },
-                        cancelled);
-
+            char[] password = Password.getInstance().getPassword();
+            if (password == null) {
                 new Handler(Looper.getMainLooper()).post(() -> {
                     progressDialog.dismiss();
-                    if (!isAdded() || getActivity() == null) {
-                        return;
-                    }
-                    if (cancelled.get()) {
-                        // Show message indicating partial progress was saved
-                        if (result > 0) {
-                            Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled_partial, result));
-                        } else {
-                            Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled));
-                        }
-                    } else if (result >= 0) {
-                        Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generated, result));
-                    } else {
+                    if (isAdded()) {
                         Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_error));
                     }
                 });
+                return;
+            }
+
+            IndexManager indexManager = IndexManager.getInstance();
+            int result = indexManager.generateIndex(
+                    activity,
+                    folderUri,
+                    password,
+                    (progressPercent) -> {
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            if (isAdded() && progressDialog.isShowing()) {
+                                progressText.setText(getString(R.string.index_generating_progress, (int) progressPercent));
+                                progressBar.setProgress((int) progressPercent);
+                            }
+                        });
+                    },
+                    cancelled);
+
+            new Handler(Looper.getMainLooper()).post(() -> {
+                progressDialog.dismiss();
+                if (!isAdded() || getActivity() == null) {
+                    return;
+                }
+                if (cancelled.get()) {
+                    // Show message indicating partial progress was saved
+                    if (result > 0) {
+                        Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled_partial, result));
+                    } else {
+                        Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled));
+                    }
+                } else if (result >= 0) {
+                    Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generated, result));
+                } else {
+                    Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_error));
+                }
             });
+        };
+
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.submit(worker);
+        } else {
+            new Thread(worker).start();
         }
     }
 

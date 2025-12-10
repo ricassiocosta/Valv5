@@ -1138,46 +1138,49 @@ public class Encryption {
         
         byte[] ciphertext = cipher.doFinal(plaintext);
 
-        // Open output stream and write with proper resource management
-        OutputStream fos = null;
-        try {
-            fos = new BufferedOutputStream(
-                    context.getContentResolver().openOutputStream(outputFile.getUri()),
-                    1024 * 32);
+        boolean writeSuccess = false;
+        try (OutputStream fos = new BufferedOutputStream(
+                context.getContentResolver().openOutputStream(outputFile.getUri()),
+                1024 * 32)) {
 
             // Write header
             fos.write(versionBytes);
             fos.write(salt);
             fos.write(ivBytes);
             fos.write(iterationCountBytes);
-            
+
             // Write encrypted content (includes Poly1305 tag at end)
             fos.write(ciphertext);
-            
+
             fos.flush();
+            writeSuccess = true;
+
         } finally {
-            if (fos != null) {
+            // Clean up sensitive data
+            SecureMemoryManager.getInstance().wipeNow(plaintext);
+            SecureMemoryManager.getInstance().wipeNow(salt);
+            SecureMemoryManager.getInstance().wipeNow(ivBytes);
+            SecureMemoryManager.getInstance().wipeNow(aad);
+            SecureMemoryManager.getInstance().wipeNow(ciphertext);
+            SecureMemoryManager.getInstance().wipeNow(contentData);
+            try {
+                secretKey.destroy();
+            } catch (DestroyFailedException e) {
+                // Ignore
+            }
+
+            if (!writeSuccess) {
+                // Attempt to delete partially written file
                 try {
-                    fos.close();
-                } catch (IOException ignored) {
-                    // Best effort close
+                    DocumentFile df = DocumentFile.fromSingleUri(context, outputFile.getUri());
+                    if (df != null && df.exists()) {
+                        df.delete();
+                    }
+                } catch (Exception ignored) {
                 }
             }
         }
-        
-        // Clean up sensitive data
-        SecureMemoryManager.getInstance().wipeNow(plaintext);
-        SecureMemoryManager.getInstance().wipeNow(salt);
-        SecureMemoryManager.getInstance().wipeNow(ivBytes);
-        SecureMemoryManager.getInstance().wipeNow(aad);
-        SecureMemoryManager.getInstance().wipeNow(ciphertext);
-        SecureMemoryManager.getInstance().wipeNow(contentData);
-        try {
-            secretKey.destroy();
-        } catch (DestroyFailedException e) {
-            // Ignore
-        }
-        
+
         SecureLog.d(TAG, "writeIndexFile: wrote index file, size=" + contentData.length);
     }
     
