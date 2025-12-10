@@ -1138,22 +1138,32 @@ public class Encryption {
         
         byte[] ciphertext = cipher.doFinal(plaintext);
 
-        // Open output stream and write
-        OutputStream fos = new BufferedOutputStream(
-                context.getContentResolver().openOutputStream(outputFile.getUri()),
-                1024 * 32);
+        // Open output stream and write with proper resource management
+        OutputStream fos = null;
+        try {
+            fos = new BufferedOutputStream(
+                    context.getContentResolver().openOutputStream(outputFile.getUri()),
+                    1024 * 32);
 
-        // Write header
-        fos.write(versionBytes);
-        fos.write(salt);
-        fos.write(ivBytes);
-        fos.write(iterationCountBytes);
-        
-        // Write encrypted content (includes Poly1305 tag at end)
-        fos.write(ciphertext);
-        
-        fos.flush();
-        fos.close();
+            // Write header
+            fos.write(versionBytes);
+            fos.write(salt);
+            fos.write(ivBytes);
+            fos.write(iterationCountBytes);
+            
+            // Write encrypted content (includes Poly1305 tag at end)
+            fos.write(ciphertext);
+            
+            fos.flush();
+        } finally {
+            if (fos != null) {
+                try {
+                    fos.close();
+                } catch (IOException ignored) {
+                    // Best effort close
+                }
+            }
+        }
         
         // Clean up sensitive data
         SecureMemoryManager.getInstance().wipeNow(plaintext);
