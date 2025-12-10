@@ -67,6 +67,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import ricassiocosta.me.valv5.adapters.GalleryGridAdapter;
 import ricassiocosta.me.valv5.adapters.GalleryPagerAdapter;
@@ -123,7 +126,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     GalleryPagerAdapter galleryPagerAdapter;
     Settings settings;
 
-    // Thread pool for background tasks with proper lifecycle management
+    // ExecutorService to serialize background filter/sort tasks for this fragment
     private ExecutorService executorService;
 
     int orderBy = ORDER_BY_NEWEST;
@@ -160,8 +163,8 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
-        // Initialize executor service for background tasks
-        executorService = Executors.newFixedThreadPool(1);
+        // initialize executor to serialize filter/order tasks
+        executorService = Executors.newSingleThreadExecutor();
 
         passwordViewModel = new ViewModelProvider(requireActivity()).get(PasswordViewModel.class);
         navigationViewModel = new ViewModelProvider(requireActivity()).get(NavigationViewModel.class);
@@ -545,92 +548,77 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     @SuppressLint("NotifyDataSetChanged")
     void orderBy(int order) {
         this.orderBy = order;
-        new Thread(() -> {
-            synchronized (LOCK) {
-                List<GalleryFile> galleryFiles = galleryViewModel.getGalleryFiles();
-                if (order == ORDER_BY_NEWEST) {
-                    galleryFiles.sort((o1, o2) -> {
-                        // Directories always come first
-                        if (o1.isDirectory() && !o2.isDirectory()) return -1;
-                        if (!o1.isDirectory() && o2.isDirectory()) return 1;
-                        // Then sort by last modified (newest first)
-                        if (o1.getLastModified() > o2.getLastModified()) {
-                            return -1;
-                        } else if (o1.getLastModified() < o2.getLastModified()) {
-                            return 1;
-                        }
-                        return 0;
-                    });
-                } else if (order == ORDER_BY_OLDEST) {
-                    galleryFiles.sort((o1, o2) -> {
-                        // Directories always come first
-                        if (o1.isDirectory() && !o2.isDirectory()) return -1;
-                        if (!o1.isDirectory() && o2.isDirectory()) return 1;
-                        // Then sort by last modified (oldest first)
-                        if (o1.getLastModified() > o2.getLastModified()) {
-                            return 1;
-                        } else if (o1.getLastModified() < o2.getLastModified()) {
-                            return -1;
-                        }
-                        return 0;
-                    });
-                } else if (order == ORDER_BY_LARGEST) {
-                    galleryFiles.sort((o1, o2) -> {
-                        // Directories always come first
-                        if (o1.isDirectory() && !o2.isDirectory()) return -1;
-                        if (!o1.isDirectory() && o2.isDirectory()) return 1;
-                        // Then sort by size (largest first)
-                        if (o1.getSize() > o2.getSize()) {
-                            return -1;
-                        } else if (o1.getSize() < o2.getSize()) {
-                            return 1;
-                        }
-                        return 0;
-                    });
-                } else if (order == ORDER_BY_SMALLEST) {
-                    galleryFiles.sort((o1, o2) -> {
-                        // Directories always come first
-                        if (o1.isDirectory() && !o2.isDirectory()) return -1;
-                        if (!o1.isDirectory() && o2.isDirectory()) return 1;
-                        // Then sort by size (smallest first)
-                        if (o1.getSize() > o2.getSize()) {
-                            return 1;
-                        } else if (o1.getSize() < o2.getSize()) {
-                            return -1;
-                        }
-                        return 0;
-                    });
-                } else {
-                    // For random order, separate directories and files, shuffle files, then combine
-                    List<GalleryFile> directories = new ArrayList<>();
-                    List<GalleryFile> files = new ArrayList<>();
-                    for (GalleryFile f : galleryFiles) {
-                        if (f.isDirectory()) {
-                            directories.add(f);
-                        } else {
-                            files.add(f);
-                        }
-                    }
-                    Collections.shuffle(files);
-                    galleryFiles.clear();
-                    galleryFiles.addAll(directories);
-                    galleryFiles.addAll(files);
-                }
-                new Handler(Looper.getMainLooper()).post(() -> {
-                    synchronized (LOCK) {
-                        galleryGridAdapter.notifyDataSetChanged();
-                        galleryPagerAdapter.notifyDataSetChanged();
-                    }
-                    // Scroll to top when sorting changes
-                    binding.recyclerView.scrollToPosition(0);
+        Runnable task = () -> doOrderBy(order);
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.submit(task);
+        } else {
+            new Thread(task).start();
+        }
+    }
+
+    private void doOrderBy(int order) {
+        synchronized (LOCK) {
+            List<GalleryFile> galleryFiles = galleryViewModel.getGalleryFiles();
+            if (order == ORDER_BY_NEWEST) {
+                galleryFiles.sort((o1, o2) -> {
+                    if (o1.isDirectory() && !o2.isDirectory()) return -1;
+                    if (!o1.isDirectory() && o2.isDirectory()) return 1;
+                    if (o1.getLastModified() > o2.getLastModified()) return -1;
+                    if (o1.getLastModified() < o2.getLastModified()) return 1;
+                    return 0;
                 });
+            } else if (order == ORDER_BY_OLDEST) {
+                galleryFiles.sort((o1, o2) -> {
+                    if (o1.isDirectory() && !o2.isDirectory()) return -1;
+                    if (!o1.isDirectory() && o2.isDirectory()) return 1;
+                    if (o1.getLastModified() > o2.getLastModified()) return 1;
+                    if (o1.getLastModified() < o2.getLastModified()) return -1;
+                    return 0;
+                });
+            } else if (order == ORDER_BY_LARGEST) {
+                galleryFiles.sort((o1, o2) -> {
+                    if (o1.isDirectory() && !o2.isDirectory()) return -1;
+                    if (!o1.isDirectory() && o2.isDirectory()) return 1;
+                    if (o1.getSize() > o2.getSize()) return -1;
+                    if (o1.getSize() < o2.getSize()) return 1;
+                    return 0;
+                });
+            } else if (order == ORDER_BY_SMALLEST) {
+                galleryFiles.sort((o1, o2) -> {
+                    if (o1.isDirectory() && !o2.isDirectory()) return -1;
+                    if (!o1.isDirectory() && o2.isDirectory()) return 1;
+                    if (o1.getSize() > o2.getSize()) return 1;
+                    if (o1.getSize() < o2.getSize()) return -1;
+                    return 0;
+                });
+            } else {
+                List<GalleryFile> directories = new ArrayList<>();
+                List<GalleryFile> files = new ArrayList<>();
+                for (GalleryFile f : galleryFiles) {
+                    if (f.isDirectory()) {
+                        directories.add(f);
+                    } else {
+                        files.add(f);
+                    }
+                }
+                Collections.shuffle(files);
+                galleryFiles.clear();
+                galleryFiles.addAll(directories);
+                galleryFiles.addAll(files);
             }
-        }).start();
+            new Handler(Looper.getMainLooper()).post(() -> {
+                synchronized (LOCK) {
+                    galleryGridAdapter.notifyDataSetChanged();
+                    galleryPagerAdapter.notifyDataSetChanged();
+                }
+                binding.recyclerView.scrollToPosition(0);
+            });
+        }
     }
 
     @SuppressLint("NotifyDataSetChanged")
     void filterBy(int filter) {
-        new Thread(() -> {
+        Runnable task = () -> {
             synchronized (LOCK) {
                 List<GalleryFile> hiddenFiles = galleryViewModel.getHiddenFiles();
                 List<GalleryFile> galleryFiles = galleryViewModel.getGalleryFiles();
@@ -647,14 +635,17 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                             hiddenFiles.add(f);
                         }
                     }
-                    new Handler(Looper.getMainLooper()).post(() -> {
-                        galleryGridAdapter.notifyDataSetChanged();
-                        galleryPagerAdapter.notifyDataSetChanged();
-                    });
                 }
-                orderBy(this.orderBy);
+                // Perform ordering atomically in the same background task to avoid nested threads
+                doOrderBy(this.orderBy);
             }
-        }).start();
+        };
+
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.submit(task);
+        } else {
+            new Thread(task).start();
+        }
     }
 
     /**
@@ -1161,8 +1152,7 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         if (galleryGridAdapter != null) {
             galleryGridAdapter.shutdown();
         }
-        
-        // Shutdown executor service to stop background threads
+        // Shutdown executorService used for filter/sort tasks
         if (executorService != null && !executorService.isShutdown()) {
             executorService.shutdown();
             try {
@@ -1171,9 +1161,9 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                 }
             } catch (InterruptedException e) {
                 executorService.shutdownNow();
+                Thread.currentThread().interrupt();
             }
         }
-        
         // Note: We do NOT call SecureMemoryManager.onFolderChanged() here
         // because it would affect the parent fragment that's being restored.
         // Memory cleanup happens only on app lock/close via performFullCleanup().

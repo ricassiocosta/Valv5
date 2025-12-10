@@ -55,6 +55,8 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
     
     // Flag to track if loading is complete
     private final AtomicBoolean loadingComplete = new AtomicBoolean(false);
+    // Cooperative cancellation flag for background loading tasks
+    private volatile boolean loadingCancelled = false;
     
     // Thread-safe list of all files found (for when user changes filter)
     private final List<GalleryFile> allFilesFound = Collections.synchronizedList(new UniqueLinkedList<>());
@@ -67,6 +69,8 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
     
     private ExecutorService executorService;
     private Thread mainScanThread;
+    // Thread used for index loading so we can manage its lifecycle
+    private Thread indexLoadThread;
 
     @Override
     public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
@@ -159,20 +163,21 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
         
         Uri rootUri = rootDirs.get(0);
         
-        // Load index in background to not block UI
-        if (executorService != null && !executorService.isShutdown()) {
-            executorService.submit(() -> {
-                // Check if fragment is still attached before accessing activity/context
-                if (!isAdded()) {
-                    return;
-                }
+        // Load index in background to not block UI (cooperatively cancelable)
+        indexLoadThread = new Thread(() -> {
+            try {
+                if (loadingCancelled || !isAdded()) return;
                 IndexManager indexManager = IndexManager.getInstance();
                 boolean loaded = indexManager.loadIndex(activity, rootUri, password);
-                if (loaded && isAdded()) {
+                if (loaded && !loadingCancelled && isAdded()) {
                     SecureLog.d(TAG, "Index loaded successfully with " + indexManager.getEntryCount() + " entries");
                 }
-            });
-        }
+            } finally {
+                // Clear reference when done
+                indexLoadThread = null;
+            }
+        });
+        indexLoadThread.start();
     }
 
     private void setClickListeners() {
@@ -203,6 +208,8 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
     @Override
     public void onDestroyView() {
         super.onDestroyView();
+        // Signal cooperative cancellation for loading tasks
+        loadingCancelled = true;
         // Cancel any pending filter wait
         filterWaitCancelled.set(true);
         if (filterWaitThread != null) {
@@ -217,14 +224,25 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
     }
     
     private void shutdownExecutor() {
+        // Signal cancellation to running tasks
+        loadingCancelled = true;
         if (mainScanThread != null) {
             mainScanThread.interrupt();
             mainScanThread = null;
         }
-        if (executorService != null && !executorService.isShutdown()) {
-            executorService.shutdownNow();
-            executorService = null;
+        // Interrupt index loading thread if active
+        if (indexLoadThread != null) {
+            indexLoadThread.interrupt();
+            indexLoadThread = null;
         }
+        // Capture current executor to avoid races with the scan thread which may hold
+        // a reference to the original executor while awaiting termination.
+        ExecutorService ex = executorService;
+        if (ex != null && !ex.isShutdown()) {
+            ex.shutdownNow();
+        }
+        // Null out the field so future loads create a new executor
+        executorService = null;
     }
     
     /**
@@ -250,7 +268,7 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
      */
     private void showFilterLoadingOverlay(int targetOrder) {
         FragmentActivity activity = getActivity();
-        if (activity == null || !isSafe()) {
+        if (activity == null || !isSafe() || loadingCancelled || Thread.currentThread().isInterrupted()) {
             return;
         }
         
@@ -372,16 +390,24 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
         
         // Show subtle loading indicator (not blocking the UI)
         setLoadingBackground(true);
-        
-        // Shutdown any previous executor
+
+        // Shutdown any previous executor and create a new one for this load
         shutdownExecutor();
         executorService = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
-        
+
+        // Capture a local reference for the scan thread to avoid races if shutdownExecutor
+        // is called concurrently (onDestroyView). The localExecutor will remain valid
+        // for the duration of this scan even if the field is nulled by the UI thread.
+        final ExecutorService localExecutor = executorService;
+
+        // Reset cancellation flag for this load
+        loadingCancelled = false;
+
         mainScanThread = new Thread(() -> {
             long start = System.currentTimeMillis();
             List<Uri> directories = settings.getGalleryDirectoriesAsUri(true);
             FragmentActivity activity = getActivity();
-            if (activity == null || !isSafe()) {
+            if (activity == null || !isSafe() || loadingCancelled || Thread.currentThread().isInterrupted()) {
                 loadingComplete.set(true);
                 return;
             }
@@ -438,41 +464,42 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
 
             // Process folders in parallel
             for (GalleryFile galleryFile : folders) {
-                if (!isSafe()) {
+                if (!isSafe() || loadingCancelled || Thread.currentThread().isInterrupted()) {
                     break;
                 }
                 if (galleryFile.isDirectory()) {
-                    executorService.submit(() -> {
-                        if (!isSafe()) return;
+                    localExecutor.submit(() -> {
+                        if (!isSafe() || loadingCancelled || Thread.currentThread().isInterrupted()) return;
                         findAllFilesInFolderLazy(galleryFile.getUri());
                     });
                 }
             }
             
-            // Wait for all folder scans to complete
-            executorService.shutdown();
+            // Wait for all folder scans to complete using the local executor reference
+            localExecutor.shutdown();
             try {
-                if (!executorService.awaitTermination(5, TimeUnit.MINUTES)) {
+                if (!localExecutor.awaitTermination(5, TimeUnit.MINUTES)) {
                     SecureLog.w(TAG, "findAllFilesLazy: timeout waiting for tasks");
-                    executorService.shutdownNow();
+                    localExecutor.shutdownNow();
                 }
             } catch (InterruptedException e) {
                 SecureLog.e(TAG, "findAllFilesLazy: interrupted", e);
-                executorService.shutdownNow();
+                localExecutor.shutdownNow();
                 Thread.currentThread().interrupt();
             }
-            
+
             // Flush any remaining pending files
-            flushPendingBatch();
-            
+            if (!loadingCancelled) flushPendingBatch();
+
             loadingComplete.set(true);
             SecureLog.d(TAG, "findAllFilesLazy: complete, found " + SecureLog.safeCount(allFilesFound.size(), "files") + ", took " + (System.currentTimeMillis() - start) + "ms");
-            
-            if (!isSafe()) {
+
+            if (!isSafe() || loadingCancelled) {
                 return;
             }
-            
+
             activity.runOnUiThread(() -> {
+                if (!isAdded() || loadingCancelled) return;
                 setLoadingBackground(false);
                 galleryViewModel.setInitialised(true);
                 if (galleryViewModel.getGalleryFiles().size() > MIN_FILES_FOR_FAST_SCROLL) {
@@ -506,6 +533,7 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
             }
 
             if (fileToCheck != null) {
+                if (loadingCancelled || Thread.currentThread().isInterrupted() || !isAdded()) return;
                 if (!isPasswordValidForFolder(activity, uri, fileToCheck)) {
                     filesInFolder.removeIf(f -> !f.isDirectory());
                 }
@@ -516,7 +544,7 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
         List<GalleryFile> subFolders = new ArrayList<>();
         
         for (GalleryFile galleryFile : filesInFolder) {
-            if (!isSafe()) {
+            if (!isSafe() || loadingCancelled || Thread.currentThread().isInterrupted()) {
                 return;
             }
             if (galleryFile.isDirectory()) {
@@ -525,18 +553,20 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
                 filesFound.add(galleryFile);
             }
         }
-        
+
         // Add files from this folder to UI
-        if (!filesFound.isEmpty()) {
+        if (!filesFound.isEmpty() && !loadingCancelled && isAdded()) {
             addFilesToUIIncremental(filesFound);
         }
-        
+
         // Update progress
-        activity.runOnUiThread(this::updateLoadingProgress);
-        
+        if (!loadingCancelled && isAdded()) {
+            activity.runOnUiThread(this::updateLoadingProgress);
+        }
+
         // Recurse into subfolders
         for (GalleryFile subFolder : subFolders) {
-            if (!isSafe()) {
+            if (!isSafe() || loadingCancelled || Thread.currentThread().isInterrupted()) {
                 return;
             }
             findAllFilesInFolderLazy(subFolder.getUri());
@@ -548,7 +578,7 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
      */
     @SuppressLint("NotifyDataSetChanged")
     private void addFilesToUIIncremental(List<GalleryFile> newFiles) {
-        if (newFiles.isEmpty() || !isSafe()) {
+        if (newFiles.isEmpty() || !isSafe() || loadingCancelled) {
             return;
         }
         
@@ -582,7 +612,7 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
         }
         
         // Store hidden files in galleryViewModel
-        if (!filesToHide.isEmpty()) {
+        if (!filesToHide.isEmpty() && !loadingCancelled && isAdded()) {
             synchronized (LOCK) {
                 galleryViewModel.getHiddenFiles().addAll(filesToHide);
             }
@@ -628,7 +658,7 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
     @SuppressLint("NotifyDataSetChanged")
     private void flushPendingBatch() {
         FragmentActivity activity = getActivity();
-        if (activity == null || !isSafe()) {
+        if (activity == null || !isSafe() || loadingCancelled) {
             return;
         }
         
@@ -642,16 +672,16 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
         }
         
         activity.runOnUiThread(() -> {
-            if (!isSafe()) {
+            if (!isSafe() || loadingCancelled) {
                 return;
             }
-            
+
             synchronized (LOCK) {
                 int startPos = galleryViewModel.getGalleryFiles().size();
-                
+
                 // Shuffle the batch for random order
                 Collections.shuffle(batch);
-                
+
                 galleryViewModel.addGalleryFiles(batch);
                 galleryGridAdapter.notifyItemRangeInserted(startPos, batch.size());
                 galleryPagerAdapter.notifyItemRangeInserted(startPos, batch.size());
@@ -685,7 +715,7 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
      * Update loading progress text - updates both bottom indicator AND overlay if visible
      */
     private void updateLoadingProgress() {
-        if (!isSafe()) {
+        if (!isSafe() || loadingCancelled) {
             return;
         }
         FragmentActivity activity = getActivity();
@@ -695,8 +725,9 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
         final String progressText = getString(R.string.gallery_loading_all_progress, foundFiles.get(), foundFolders.get());
         activity.runOnUiThread(() -> {
             // Update bottom indicator
+            if (!isSafe() || loadingCancelled) return;
             binding.loadingIndicatorText.setText(progressText);
-            
+
             // Also update full-screen overlay if it's showing
             if (filterOverlayShowing.get()) {
                 binding.cLLoading.txtProgress.setText(progressText);
