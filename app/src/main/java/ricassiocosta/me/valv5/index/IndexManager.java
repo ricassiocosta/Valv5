@@ -373,18 +373,17 @@ public class IndexManager {
      * Check if a file is an index file by reading its metadata.
      */
     private boolean isIndexFile(@NonNull Context context, @NonNull Uri fileUri, @NonNull char[] password) {
-        try {
-            InputStream is = context.getContentResolver().openInputStream(fileUri);
+        try (InputStream is = context.getContentResolver().openInputStream(fileUri)) {
             if (is == null) return false;
             
             Encryption.Streams streams = Encryption.getCipherInputStream(is, password, false, Encryption.ENCRYPTION_VERSION_5);
-            
-            // Check content type from metadata
-            String contentType = streams.getContentTypeString();
-            streams.close();
-            is.close();
-            
-            return CONTENT_TYPE_INDEX.equals(contentType);
+            try {
+                // Check content type from metadata
+                String contentType = streams.getContentTypeString();
+                return CONTENT_TYPE_INDEX.equals(contentType);
+            } finally {
+                streams.close();
+            }
             
         } catch (Exception e) {
             // Not an index file or wrong password
@@ -396,49 +395,50 @@ public class IndexManager {
      * Parse the index file content and populate the cache.
      */
     private boolean parseIndexFile(@NonNull Context context, @NonNull Uri fileUri, @NonNull char[] password) {
-        try {
-            InputStream is = context.getContentResolver().openInputStream(fileUri);
+        try (InputStream is = context.getContentResolver().openInputStream(fileUri)) {
             if (is == null) return false;
             
             Encryption.Streams streams = Encryption.getCipherInputStream(is, password, false, Encryption.ENCRYPTION_VERSION_5);
-            
-            // Read the file section which contains the JSON index
-            InputStream fileStream = streams.getCompositeFileStream();
-            if (fileStream == null) {
-                streams.close();
-                is.close();
-                return false;
-            }
-            
-            // Read all bytes from file stream
-            byte[] contentBytes = readAllBytes(fileStream);
-            String jsonContent = new String(contentBytes, StandardCharsets.UTF_8);
-            
-            // Clear sensitive data
-            java.util.Arrays.fill(contentBytes, (byte) 0);
-            
-            streams.close();
-            is.close();
-            
-            // Parse JSON
-            JSONObject json = new JSONObject(jsonContent);
-            
-            int version = json.optInt(JSON_VERSION, 1);
-            lastUpdatedAt = json.optLong(JSON_UPDATED_AT, System.currentTimeMillis());
-            
-            JSONObject entries = json.optJSONObject(JSON_ENTRIES);
-            if (entries != null) {
-                Iterator<String> keys = entries.keys();
-                while (keys.hasNext()) {
-                    String fileName = keys.next();
-                    JSONObject entryJson = entries.getJSONObject(fileName);
-                    IndexEntry entry = IndexEntry.fromJson(fileName, entryJson);
-                    indexCache.put(fileName, entry);
+            try {
+                // Read the file section which contains the JSON index
+                InputStream fileStream = streams.getCompositeFileStream();
+                if (fileStream == null) {
+                    return false;
                 }
+                
+                // Read all bytes from file stream
+                byte[] contentBytes = readAllBytes(fileStream);
+                String jsonContent = new String(contentBytes, StandardCharsets.UTF_8);
+                
+                // Clear sensitive data immediately after use
+                java.util.Arrays.fill(contentBytes, (byte) 0);
+                
+                // Parse JSON
+                JSONObject json = new JSONObject(jsonContent);
+                
+                int version = json.optInt(JSON_VERSION, 1);
+                lastUpdatedAt = json.optLong(JSON_UPDATED_AT, System.currentTimeMillis());
+                
+                JSONObject entries = json.optJSONObject(JSON_ENTRIES);
+                if (entries != null) {
+                    Iterator<String> keys = entries.keys();
+                    while (keys.hasNext()) {
+                        String fileName = keys.next();
+                        JSONObject entryJson = entries.getJSONObject(fileName);
+                        IndexEntry entry = IndexEntry.fromJson(fileName, entryJson);
+                        indexCache.put(fileName, entry);
+                    }
+                }
+                
+                // Clear sensitive JSON content from memory
+                jsonContent = null;
+                System.gc(); // Suggest GC to clean up sensitive data
+                
+                SecureLog.d(TAG, "parseIndexFile: parsed version " + version + " with " + indexCache.size() + " entries");
+                return true;
+            } finally {
+                streams.close();
             }
-            
-            SecureLog.d(TAG, "parseIndexFile: parsed version " + version + " with " + indexCache.size() + " entries");
-            return true;
             
         } catch (Exception e) {
             SecureLog.e(TAG, "parseIndexFile: error", e);
