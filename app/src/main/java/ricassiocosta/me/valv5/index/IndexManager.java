@@ -373,28 +373,27 @@ public class IndexManager {
      * Check if a file is an index file by reading its metadata.
      */
     private boolean isIndexFile(@NonNull Context context, @NonNull Uri fileUri, @NonNull char[] password) {
-        try (InputStream is = context.getContentResolver().openInputStream(fileUri)) {
-            if (is == null) return false;
-            
-            Encryption.Streams streams = null;
-            try {
+        InputStream raw = null;
+        Encryption.Streams streams = null;
+        try {
+            raw = context.getContentResolver().openInputStream(fileUri);
+            if (raw == null) return false;
+
+            try (InputStream is = raw) {
                 streams = Encryption.getCipherInputStream(is, password, false, Encryption.ENCRYPTION_VERSION_5);
-                // Check content type from metadata
                 String contentType = streams.getContentTypeString();
                 return CONTENT_TYPE_INDEX.equals(contentType);
-            } finally {
-                if (streams != null) {
-                    try {
-                        streams.close();
-                    } catch (Exception ignored) {
-                        // Best effort close
-                    }
+            }
+
+        } catch (Exception e) {
+            return false;
+        } finally {
+            if (streams != null) {
+                try {
+                    streams.close();
+                } catch (Exception ignored) {
                 }
             }
-            
-        } catch (Exception e) {
-            // Not an index file or wrong password
-            return false;
         }
     }
     
@@ -402,62 +401,63 @@ public class IndexManager {
      * Parse the index file content and populate the cache.
      */
     private boolean parseIndexFile(@NonNull Context context, @NonNull Uri fileUri, @NonNull char[] password) {
-        try (InputStream is = context.getContentResolver().openInputStream(fileUri)) {
-            if (is == null) return false;
-            
-            Encryption.Streams streams = null;
-            try {
+        InputStream raw = null;
+        Encryption.Streams streams = null;
+        try {
+            raw = context.getContentResolver().openInputStream(fileUri);
+            if (raw == null) return false;
+
+            try (InputStream is = raw) {
                 streams = Encryption.getCipherInputStream(is, password, false, Encryption.ENCRYPTION_VERSION_5);
-                
-                // Read the file section which contains the JSON index
-                InputStream fileStream = streams.getCompositeFileStream();
-                if (fileStream == null) {
+
+                InputStream composite = streams.getCompositeFileStream();
+                if (composite == null) {
                     return false;
                 }
-                
-                // Read all bytes from file stream
-                byte[] contentBytes = readAllBytes(fileStream);
-                String jsonContent = new String(contentBytes, StandardCharsets.UTF_8);
-                
-                // Clear sensitive data immediately after use
-                java.util.Arrays.fill(contentBytes, (byte) 0);
-                
-                // Parse JSON
-                JSONObject json = new JSONObject(jsonContent);
-                
-                int version = json.optInt(JSON_VERSION, 1);
-                lastUpdatedAt = json.optLong(JSON_UPDATED_AT, System.currentTimeMillis());
-                
-                JSONObject entries = json.optJSONObject(JSON_ENTRIES);
-                if (entries != null) {
-                    Iterator<String> keys = entries.keys();
-                    while (keys.hasNext()) {
-                        String fileName = keys.next();
-                        JSONObject entryJson = entries.getJSONObject(fileName);
-                        IndexEntry entry = IndexEntry.fromJson(fileName, entryJson);
-                        indexCache.put(fileName, entry);
+
+                try (InputStream fileStream = composite) {
+                    // Read all bytes from file stream
+                    byte[] contentBytes = readAllBytes(fileStream);
+                    String jsonContent = new String(contentBytes, StandardCharsets.UTF_8);
+
+                    // Clear sensitive byte[] buffer
+                    java.util.Arrays.fill(contentBytes, (byte) 0);
+
+                    // Parse JSON
+                    JSONObject json = new JSONObject(jsonContent);
+
+                    // Help GC by removing strong ref to the parsed string
+                    jsonContent = null;
+
+                    int version = json.optInt(JSON_VERSION, 1);
+                    lastUpdatedAt = json.optLong(JSON_UPDATED_AT, System.currentTimeMillis());
+
+                    JSONObject entries = json.optJSONObject(JSON_ENTRIES);
+                    if (entries != null) {
+                        Iterator<String> keys = entries.keys();
+                        while (keys.hasNext()) {
+                            String fileName = keys.next();
+                            JSONObject entryJson = entries.getJSONObject(fileName);
+                            IndexEntry entry = IndexEntry.fromJson(fileName, entryJson);
+                            indexCache.put(fileName, entry);
+                        }
                     }
-                }
-                
-                // Clear sensitive JSON content from memory
-                jsonContent = null;
-                System.gc(); // Suggest GC to clean up sensitive data
-                
-                SecureLog.d(TAG, "parseIndexFile: parsed version " + version + " with " + indexCache.size() + " entries");
-                return true;
-            } finally {
-                if (streams != null) {
-                    try {
-                        streams.close();
-                    } catch (Exception ignored) {
-                        // Best effort close
-                    }
+
+                    SecureLog.d(TAG, "parseIndexFile: parsed version " + version + " with " + indexCache.size() + " entries");
+                    return true;
                 }
             }
-            
+
         } catch (Exception e) {
             SecureLog.e(TAG, "parseIndexFile: error", e);
             return false;
+        } finally {
+            if (streams != null) {
+                try {
+                    streams.close();
+                } catch (Exception ignored) {
+                }
+            }
         }
     }
     
@@ -765,33 +765,33 @@ public class IndexManager {
      * @return File type, or -1 if error
      */
     private int readFileType(@NonNull Context context, @NonNull Uri fileUri, @NonNull char[] password) {
-        try (InputStream is = context.getContentResolver().openInputStream(fileUri)) {
-            if (is == null) return -1;
-            
-            Encryption.Streams streams = null;
-            try {
+        InputStream raw = null;
+        Encryption.Streams streams = null;
+        try {
+            raw = context.getContentResolver().openInputStream(fileUri);
+            if (raw == null) return -1;
+
+            try (InputStream is = raw) {
                 streams = Encryption.getCipherInputStream(is, password, false, Encryption.ENCRYPTION_VERSION_5);
+
                 int fileType = streams.getFileType();
-                
-                // Skip index files
+
                 if (CONTENT_TYPE_INDEX.equals(streams.getContentTypeString())) {
                     return -1;
                 }
-                
+
                 return fileType;
-            } finally {
-                if (streams != null) {
-                    try {
-                        streams.close();
-                    } catch (Exception ignored) {
-                        // Best effort close
-                    }
+            }
+
+        } catch (Exception e) {
+            return -1;
+        } finally {
+            if (streams != null) {
+                try {
+                    streams.close();
+                } catch (Exception ignored) {
                 }
             }
-            
-        } catch (Exception e) {
-            // File might be corrupted or wrong password
-            return -1;
         }
     }
     
