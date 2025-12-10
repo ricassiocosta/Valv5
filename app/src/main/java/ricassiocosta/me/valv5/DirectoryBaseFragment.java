@@ -1014,23 +1014,40 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         GalleryFile selectedFolder = selectedFiles.get(0);
         Uri folderUri = selectedFolder.getUri();
 
-        // Show progress dialog
-        android.app.ProgressDialog progressDialog = new android.app.ProgressDialog(activity);
-        progressDialog.setTitle(getString(R.string.index_generating));
-        progressDialog.setMessage(getString(R.string.index_generating_progress, 0));
-        progressDialog.setProgressStyle(android.app.ProgressDialog.STYLE_HORIZONTAL);
-        progressDialog.setIndeterminate(false);
-        progressDialog.setMax(100);
-        progressDialog.setCancelable(true);
-        progressDialog.setProgress(0);
-
         AtomicBoolean cancelled = new AtomicBoolean(false);
 
-        progressDialog.setOnCancelListener(dialog -> {
+        // Create modern progress dialog using AlertDialog with custom layout
+        androidx.appcompat.app.AlertDialog.Builder builder = new androidx.appcompat.app.AlertDialog.Builder(activity);
+        builder.setTitle(getString(R.string.index_generating));
+        builder.setCancelable(true);
+        
+        // Create custom layout with progress bar
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(activity);
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        layout.setPadding(50, 30, 50, 30);
+        
+        android.widget.TextView messageView = new android.widget.TextView(activity);
+        messageView.setText(getString(R.string.index_generating_progress, 0));
+        messageView.setTextSize(14);
+        layout.addView(messageView);
+        
+        android.widget.ProgressBar progressBar = new android.widget.ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
+        progressBar.setMax(100);
+        progressBar.setProgress(0);
+        android.widget.LinearLayout.LayoutParams progressParams = new android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+        progressParams.setMargins(0, 20, 0, 0);
+        progressBar.setLayoutParams(progressParams);
+        layout.addView(progressBar);
+        
+        builder.setView(layout);
+        builder.setNegativeButton(android.R.string.cancel, (dialog, which) -> {
             cancelled.set(true);
             Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled));
         });
-
+        
+        androidx.appcompat.app.AlertDialog progressDialog = builder.create();
         progressDialog.show();
 
         // Run index generation in background using managed executor service
@@ -1061,8 +1078,8 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                         (progressPercent) -> {
                             new Handler(Looper.getMainLooper()).post(() -> {
                                 if (isAdded() && progressDialog.isShowing()) {
-                                    progressDialog.setMessage(getString(R.string.index_generating_progress, (int) progressPercent));
-                                    progressDialog.setProgress((int) progressPercent);
+                                    messageView.setText(getString(R.string.index_generating_progress, (int) progressPercent));
+                                    progressBar.setProgress((int) progressPercent);
                                 }
                             });
                         },
