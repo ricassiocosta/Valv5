@@ -588,35 +588,41 @@ public class IndexManager {
                 return false;
             }
             
-            // Delete old index file if exists
-            if (indexFileUri != null && indexFileName != null) {
-                DocumentFile oldIndexFile = findFileByName(rootFolder, indexFileName);
-                if (oldIndexFile != null && oldIndexFile.exists()) {
-                    oldIndexFile.delete();
-                    SecureLog.d(TAG, "saveIndex: deleted old index file");
-                }
+            // Reuse existing index filename when possible. If we already have an indexFileName,
+            // try to update that file; otherwise generate a new name and create the file.
+            String targetFileName = indexFileName;
+            if (targetFileName == null) {
+                targetFileName = generateRandomFileName();
             }
-            
-            // Create new index file with random name
-            String newFileName = generateRandomFileName();
-            
-            // Create the encrypted index file using V5 format
-            DocumentFile indexFile = createIndexFile(
+
+            DocumentFile indexFile = findFileByName(rootFolder, targetFileName);
+            if (indexFile == null) {
+                indexFile = rootFolder.createFile("application/octet-stream", targetFileName);
+            }
+
+            if (indexFile == null) {
+                SecureLog.e(TAG, "saveIndex: could not create or find index file");
+                java.util.Arrays.fill(contentBytes, (byte) 0);
+                return false;
+            }
+
+            // Write the encrypted index file using V5 format with INDEX content type
+            Encryption.writeIndexFile(
                     activity,
-                    rootFolder,
-                    contentBytes,
-                    password,
-                    newFileName);
+                    new ByteArrayInputStream(contentBytes),
+                    contentBytes.length,
+                    indexFile,
+                    password);
             
             // Clear sensitive data
             java.util.Arrays.fill(contentBytes, (byte) 0);
             
             if (indexFile != null) {
-                indexFileName = newFileName;
+                indexFileName = targetFileName;
                 indexFileUri = indexFile.getUri();
                 dirty.set(false);
                 loaded.set(true);
-                SecureLog.d(TAG, "saveIndex: saved index with " + indexCache.size() + " entries");
+                SecureLog.d(TAG, "saveIndex: saved index with " + indexCache.size() + " entries to " + indexFileName);
                 return true;
             }
             
@@ -642,13 +648,14 @@ public class IndexManager {
         if (!dirty.get()) {
             return true;
         }
+        // Delegate to saveIndex which performs the actual save and updates flags
         return saveIndex(activity, rootUri, password);
     }
-    
+
     /**
      * Generate index for all files in the vault.
      * Recursively scans all folders and reads file metadata to determine types.
-     * 
+     *
      * @param activity FragmentActivity context
      * @param rootUri URI of the vault root folder
      * @param password Encryption password
@@ -662,9 +669,9 @@ public class IndexManager {
             @NonNull char[] password,
             @Nullable IOnProgress onProgress,
             @NonNull AtomicBoolean cancelled) {
-        
+
         SecureLog.d(TAG, "generateIndex: starting smart index generation");
-        
+
         // Load existing index first (if any) to avoid re-reading already indexed files
         int existingEntries = indexCache.size();
         if (existingEntries == 0) {
@@ -672,26 +679,26 @@ public class IndexManager {
             existingEntries = indexCache.size();
         }
         SecureLog.d(TAG, "generateIndex: starting with " + existingEntries + " existing entries");
-        
+
         AtomicInteger totalFiles = new AtomicInteger(0);
         AtomicInteger processedFiles = new AtomicInteger(0);
-        
+
         try {
             // First pass: count files
             countFilesRecursive(activity, rootUri, totalFiles, cancelled);
-            
+
             if (cancelled.get()) {
                 // Save partial progress before returning
                 SecureLog.d(TAG, "generateIndex: cancelled during counting, saving partial index");
                 saveIndex(activity, rootUri, password);
                 return indexCache.size();
             }
-            
+
             SecureLog.d(TAG, "generateIndex: found " + totalFiles.get() + " files to process");
-            
+
             // Second pass: index files (skips already indexed ones)
             indexFolderRecursive(activity, rootUri, "", password, totalFiles.get(), processedFiles, onProgress, cancelled);
-            
+
             if (cancelled.get()) {
                 // Save partial progress before returning
                 int newEntries = indexCache.size() - existingEntries;
@@ -699,18 +706,18 @@ public class IndexManager {
                 saveIndex(activity, rootUri, password);
                 return indexCache.size();
             }
-            
+
             int newEntries = indexCache.size() - existingEntries;
             SecureLog.d(TAG, "generateIndex: added " + newEntries + " new entries");
-            
+
             // Save the index
             if (saveIndex(activity, rootUri, password)) {
                 SecureLog.d(TAG, "generateIndex: completed, total " + indexCache.size() + " files");
                 return indexCache.size();
             }
-            
+
             return -1;
-            
+
         } catch (Exception e) {
             SecureLog.e(TAG, "generateIndex: error", e);
             // Try to save partial progress even on error
@@ -935,6 +942,24 @@ public class IndexManager {
             sb.append(chars.charAt(random.nextInt(chars.length())));
         }
         return sb.toString();
+    }
+
+    /**
+     * Testing helper: determine or create the target index filename and return it.
+     * This will initialize `indexFileName` if it was null.
+     */
+    public synchronized String determineTargetFileNameForTest() {
+        if (indexFileName == null) {
+            indexFileName = generateRandomFileName();
+        }
+        return indexFileName;
+    }
+
+    /**
+     * Testing helper: get current in-memory index file name (may be null).
+     */
+    public synchronized String getIndexFileNameForTest() {
+        return indexFileName;
     }
     
     /**

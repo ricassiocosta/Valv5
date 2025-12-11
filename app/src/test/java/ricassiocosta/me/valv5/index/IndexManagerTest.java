@@ -62,4 +62,18 @@ public class IndexManagerTest {
         String withSpecial = ".aB3xY9zK2mN5pQ7rS1tU4vW6xZ8aB_!";
         assertFalse(withSpecial.substring(1).matches("[a-zA-Z0-9]{32}"));
     }
+
+    @Test
+    public void determinesSameIndexFileNameAcrossCalls() {
+        IndexManager mgr = IndexManager.getInstance();
+
+        String first = mgr.determineTargetFileNameForTest();
+        String second = mgr.determineTargetFileNameForTest();
+
+        assertNotNull("First generated filename should not be null", first);
+        assertEquals("Filename should be stable across calls", first, second);
+        // Ensure it's in the expected format (dot + 32 alnum)
+        assertTrue("Filename should start with dot", first.startsWith("."));
+        assertEquals("Filename length should be 33", 33, first.length());
+    }
 }
