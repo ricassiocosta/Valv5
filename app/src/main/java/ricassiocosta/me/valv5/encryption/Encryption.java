@@ -1180,8 +1180,6 @@ public class Encryption {
                 }
             }
         }
-
-        SecureLog.d(TAG, "writeIndexFile: wrote index file, size=" + contentData.length);
     }
     
     /**

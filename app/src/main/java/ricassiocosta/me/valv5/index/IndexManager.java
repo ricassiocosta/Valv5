@@ -518,9 +518,6 @@ public class IndexManager {
                     // Parse JSON
                     JSONObject json = new JSONObject(jsonContent);
 
-                    // Help GC by removing strong ref to the parsed string
-                    jsonContent = null;
-
                     int version = json.optInt(JSON_VERSION, 1);
                     lastUpdatedAt = json.optLong(JSON_UPDATED_AT, System.currentTimeMillis());
 

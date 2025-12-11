@@ -58,6 +58,10 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.SimpleItemAnimator;
 import androidx.recyclerview.widget.StaggeredGridLayoutManager;
 import androidx.viewpager2.widget.ViewPager2;
+import android.widget.ProgressBar;
+import android.widget.TextView;
+import androidx.appcompat.app.AlertDialog;
+import android.view.LayoutInflater;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -67,16 +71,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 import ricassiocosta.me.valv5.adapters.GalleryGridAdapter;
-import android.widget.ProgressBar;
-import android.widget.TextView;
-import androidx.appcompat.app.AlertDialog;
-import android.view.LayoutInflater;
-
 import ricassiocosta.me.valv5.adapters.GalleryPagerAdapter;
 import ricassiocosta.me.valv5.data.FileType;
 import ricassiocosta.me.valv5.data.GalleryFile;
