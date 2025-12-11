@@ -139,6 +139,11 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
         if (!galleryViewModel.isInitialised()) {
             // Load index if available (for faster filtering)
             loadIndexIfAvailable();
+            // Start autosave for the index (will use weak reference to activity)
+            FragmentActivity act = getActivity();
+            if (act != null) {
+                IndexManager.getInstance().startAutoSave(act);
+            }
             
             // Start with RANDOM order - enables lazy loading
             orderBy = ORDER_BY_RANDOM;
@@ -218,6 +223,34 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
         }
         // Shutdown executor and clear cache when view is destroyed
         shutdownExecutor();
+        // Stop any autosave scheduled by IndexManager to avoid leaking activity
+        IndexManager indexManager = IndexManager.getInstance();
+
+        // If lazy loading was cancelled, persist any index entries generated so far.
+        // This does NOT probe file types; it only saves the in-memory index cache.
+        try {
+            if (indexManager.isDirty()) {
+                FragmentActivity act = getActivity();
+                char[] pwd = Password.getInstance().getPassword();
+                List<Uri> roots = settings.getGalleryDirectoriesAsUri(true);
+                if (act != null && pwd != null && roots != null && !roots.isEmpty()) {
+                    Uri rootToSave = roots.get(0);
+                    Thread saveThread = new Thread(() -> {
+                        try {
+                            indexManager.saveIfDirty(act, rootToSave, pwd);
+                        } catch (Exception e) {
+                            SecureLog.e(TAG, "onDestroyView: error saving index after cancel", e);
+                        }
+                    }, "IndexSaveOnCancel");
+                    saveThread.setDaemon(true);
+                    saveThread.start();
+                }
+            }
+        } catch (Exception e) {
+            SecureLog.e(TAG, "onDestroyView: error scheduling index save", e);
+        }
+
+        indexManager.stopAutoSave();
         passwordVerifiedCache.clear();
         allFilesFound.clear();
         pendingBatch.clear();
@@ -356,12 +389,129 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
             // User wants a sorted view but loading isn't complete
             // Show full-screen overlay with cancel button
             showFilterLoadingOverlay(order);
-            this.orderBy = order;
         } else {
             // Random order or loading complete - proceed normally
             super.orderBy(order);
             this.orderBy = order;
         }
+    }
+
+    /**
+     * Intercept filter menu selections so we can show a full-screen overlay
+     * when the index file isn't present yet. The overlay will inform the user
+     * to wait for loading to finish and that they may generate the index
+     * from the root folder options. After loading completes, the filter is applied.
+     */
+    @Override
+    public boolean onMenuItemSelected(@NonNull android.view.MenuItem menuItem) {
+        int id = menuItem.getItemId();
+        int targetFilter = -1;
+        if (id == R.id.filter_all) targetFilter = FILTER_ALL;
+        else if (id == R.id.filter_images) targetFilter = FILTER_IMAGES;
+        else if (id == R.id.filter_gifs) targetFilter = FILTER_GIFS;
+        else if (id == R.id.filter_videos) targetFilter = FILTER_VIDEOS;
+        else if (id == R.id.filter_text) targetFilter = FILTER_TEXTS;
+
+        if (targetFilter != -1) {
+            IndexManager indexManager = IndexManager.getInstance();
+            // If index isn't loaded yet, show overlay and wait (offer generate-index hint)
+            if (!indexManager.isLoaded() && isLoadingInProgress()) {
+                showFilterLoadingOverlayForFilter(targetFilter);
+                return true;
+            }
+        }
+
+        // Fallback to base behaviour for other items or when index is present
+        return super.onMenuItemSelected(menuItem);
+    }
+
+    /**
+     * Similar to showFilterLoadingOverlay but targeted for filter actions.
+     * Shows a full-screen overlay with cancel button and a hint about generating
+     * the index from the root folder. After waiting for loading to finish, the
+     * requested filter is applied.
+     */
+    public void showFilterLoadingOverlayForFilter(int targetFilter) {
+        FragmentActivity activity = getActivity();
+        if (activity == null || !isSafe() || loadingCancelled || Thread.currentThread().isInterrupted()) {
+            return;
+        }
+
+        filterWaitCancelled.set(false);
+        filterOverlayShowing.set(true);
+
+        activity.runOnUiThread(() -> {
+            // Hide bottom indicator - only one should be visible at a time
+            binding.loadingIndicatorBottom.setVisibility(View.GONE);
+
+            // Show full overlay with an additional hint about index generation
+            binding.cLLoading.txtLoading.setText(R.string.gallery_loading_finalizing);
+            String progress = getString(R.string.gallery_loading_all_progress, foundFiles.get(), foundFolders.get());
+            String hint = "\n\n" + getString(R.string.menu_generate_index) + ": available from root folder options to avoid waiting.";
+            binding.cLLoading.txtProgress.setText(progress + hint);
+            binding.cLLoading.txtProgress.setVisibility(View.VISIBLE);
+            binding.cLLoading.btnCancelLoading.setVisibility(View.VISIBLE);
+            binding.cLLoading.cLLoading.setVisibility(View.VISIBLE);
+
+            // Setup cancel button
+            binding.cLLoading.btnCancelLoading.setOnClickListener(v -> {
+                // Cancel waiting and revert to no filter
+                filterWaitCancelled.set(true);
+                filterOverlayShowing.set(false);
+                if (filterWaitThread != null) {
+                    filterWaitThread.interrupt();
+                }
+
+                // Hide overlay
+                binding.cLLoading.cLLoading.setVisibility(View.GONE);
+                binding.cLLoading.btnCancelLoading.setVisibility(View.GONE);
+
+                // Show bottom indicator again if still loading
+                if (isLoadingInProgress()) {
+                    binding.loadingIndicatorBottom.setVisibility(View.VISIBLE);
+                }
+
+                // Revert active filter to ALL
+                activeFilter = FILTER_ALL;
+                // Notify UI to reflect no filter
+                DirectoryAllFragment.super.filterBy(FILTER_ALL);
+            });
+        });
+
+        // Start thread to wait for loading completion
+        filterWaitThread = new Thread(() -> {
+            // Wait for the main scan thread to complete
+            if (mainScanThread != null && mainScanThread.isAlive()) {
+                try {
+                    mainScanThread.join();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+
+            // Check if cancelled
+            if (filterWaitCancelled.get() || !isSafe()) {
+                return;
+            }
+
+            filterOverlayShowing.set(false);
+
+            FragmentActivity act = getActivity();
+            if (act == null) {
+                return;
+            }
+
+            // Hide overlay and apply the filter
+            act.runOnUiThread(() -> {
+                binding.cLLoading.cLLoading.setVisibility(View.GONE);
+                binding.cLLoading.btnCancelLoading.setVisibility(View.GONE);
+            });
+
+            // Apply the filter now that loading is complete
+            DirectoryAllFragment.super.filterBy(targetFilter);
+        });
+        filterWaitThread.start();
     }
 
     /**
@@ -494,6 +644,32 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
             loadingComplete.set(true);
             SecureLog.d(TAG, "findAllFilesLazy: complete, found " + SecureLog.safeCount(allFilesFound.size(), "files") + ", took " + (System.currentTimeMillis() - start) + "ms");
 
+            // After the lazy scan completes, persist index if there are unsaved entries.
+            // Run on background thread to avoid blocking UI. Requires valid password and root URI.
+            try {
+                IndexManager indexManager = IndexManager.getInstance();
+                if (indexManager.isDirty()) {
+                    char[] pwd = Password.getInstance().getPassword();
+                    List<Uri> roots = settings.getGalleryDirectoriesAsUri(true);
+                    if (pwd != null && roots != null && !roots.isEmpty()) {
+                        Uri rootUriToSave = roots.get(0);
+                        Thread saveThread = new Thread(() -> {
+                            try {
+                                FragmentActivity saveAct = getActivity();
+                                if (saveAct == null) return;
+                                indexManager.saveIfDirty(saveAct, rootUriToSave, pwd);
+                            } catch (Exception e) {
+                                SecureLog.e(TAG, "findAllFilesLazy: error saving index after scan", e);
+                            }
+                        }, "IndexSaveAfterScan");
+                        saveThread.setDaemon(true);
+                        saveThread.start();
+                    }
+                }
+            } catch (Exception e) {
+                SecureLog.e(TAG, "findAllFilesLazy: error scheduling final save", e);
+            }
+
             if (!isSafe() || loadingCancelled) {
                 return;
             }
@@ -590,8 +766,46 @@ public class DirectoryAllFragment extends DirectoryBaseFragment {
         List<GalleryFile> filesToAdd = new ArrayList<>();
         List<GalleryFile> filesToHide = new ArrayList<>();
         
+        IndexManager indexManager = IndexManager.getInstance();
+
+        FragmentActivity activity = getActivity();
+        char[] sessionPwd = Password.getInstance().getPassword();
+        final boolean canProbe = activity != null && sessionPwd != null;
+
         for (GalleryFile f : newFiles) {
             int fileType = getFileTypeFromIndexOrFile(f);
+
+            // If the index doesn't have this entry yet, try to probe the file type using the
+            // session password and persist only when a real type could be determined.
+            try {
+                if (!f.isDirectory()) {
+                    String encName = f.getEncryptedName();
+                    Uri fu = f.getUri();
+                    if (encName != null && indexManager.getType(encName) == -1 && fu != null) {
+                        int probed = -1;
+                        if (canProbe) {
+                            try {
+                                probed = indexManager.probeFileType(activity, fu, sessionPwd);
+                            } catch (Exception e) {
+                                SecureLog.e(TAG, "addFilesToUIIncremental: probeFileType failed", e);
+                                probed = -1;
+                            }
+                        }
+
+                        if (probed >= 0) {
+                            // Use probed type and persist entry
+                            fileType = probed;
+                            String folderPath = FileStuff.getNestedPathFromUri(fu);
+                            indexManager.addEntry(encName, fileType, folderPath != null ? folderPath : "");
+                        } else {
+                            // No reliable type could be probed; skip persisting now
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                SecureLog.e(TAG, "addFilesToUIIncremental: error adding index entry", e);
+            }
+
             if (activeFilter != FILTER_ALL && !f.isDirectory() && fileType != activeFilter) {
                 // File doesn't match filter
                 filesToHide.add(f);

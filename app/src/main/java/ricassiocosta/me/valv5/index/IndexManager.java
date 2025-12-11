@@ -43,6 +43,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.lang.ref.WeakReference;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+import ricassiocosta.me.valv5.data.Password;
+import ricassiocosta.me.valv5.utils.Settings;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import ricassiocosta.me.valv5.data.Password;
@@ -195,6 +203,11 @@ public class IndexManager {
         dirty.set(true);
         lastUpdatedAt = System.currentTimeMillis();
         SecureLog.d(TAG, "addEntry: added " + fileName + " type=" + fileType);
+        // Schedule a debounced autosave only when an index was previously loaded
+        // to avoid persisting partial/placeholder entries during initial lazy scan.
+        if (loaded.get()) {
+            scheduleAutoSave();
+        }
     }
     
     /**
@@ -216,6 +229,10 @@ public class IndexManager {
             dirty.set(true);
             lastUpdatedAt = System.currentTimeMillis();
             SecureLog.d(TAG, "removeEntry: removed " + fileName);
+            // Schedule autosave when entries are removed, but only if an index was loaded
+            if (loaded.get()) {
+                scheduleAutoSave();
+            }
             return true;
         }
         return false;
@@ -264,9 +281,84 @@ public class IndexManager {
         dirty.set(false);
         loaded.set(false);
         loading.set(false);
+        // Stop autosave when clearing the cache to avoid holding activity references
+        stopAutoSave();
         // Re-register with SecureMemoryManager for next session
         SecureMemoryManager.getInstance().registerMap(indexCache);
         SecureLog.d(TAG, "clear: index cache cleared");
+    }
+
+    // --- Autosave support (debounced) ---
+    private ScheduledExecutorService autosaveExecutor = null;
+    private ScheduledFuture<?> autosaveFuture = null;
+    private WeakReference<FragmentActivity> autosaveActivityRef = null;
+    private static final long AUTOSAVE_DELAY_MS = 2000L; // 2 seconds
+
+    /**
+     * Start autosave mechanism. Stores a weak reference to the activity for save operations.
+     */
+    public synchronized void startAutoSave(@NonNull FragmentActivity activity) {
+        if (autosaveExecutor == null || autosaveExecutor.isShutdown()) {
+            autosaveExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "IndexManager-Autosave");
+                t.setDaemon(true);
+                return t;
+            });
+        }
+        autosaveActivityRef = new WeakReference<>(activity);
+        SecureLog.d(TAG, "startAutoSave: autosave started");
+    }
+
+    /**
+     * Stop autosave and release resources.
+     */
+    public synchronized void stopAutoSave() {
+        if (autosaveFuture != null && !autosaveFuture.isDone()) {
+            autosaveFuture.cancel(false);
+            autosaveFuture = null;
+        }
+        if (autosaveExecutor != null && !autosaveExecutor.isShutdown()) {
+            autosaveExecutor.shutdownNow();
+            autosaveExecutor = null;
+        }
+        if (autosaveActivityRef != null) {
+            autosaveActivityRef.clear();
+            autosaveActivityRef = null;
+        }
+        SecureLog.d(TAG, "stopAutoSave: autosave stopped");
+    }
+
+    /**
+     * Schedule a debounced save operation using the stored activity and current password.
+     */
+    private synchronized void scheduleAutoSave() {
+        if (autosaveExecutor == null) return;
+        // Cancel previous scheduled save
+        if (autosaveFuture != null && !autosaveFuture.isDone()) {
+            autosaveFuture.cancel(false);
+            autosaveFuture = null;
+        }
+
+        autosaveFuture = autosaveExecutor.schedule(() -> {
+            try {
+                FragmentActivity activity = autosaveActivityRef == null ? null : autosaveActivityRef.get();
+                if (activity == null) return;
+
+                char[] password = Password.getInstance().getPassword();
+                if (password == null) return;
+
+                List<Uri> roots = Settings.getInstance(activity).getGalleryDirectoriesAsUri(true);
+                if (roots == null || roots.isEmpty()) return;
+                Uri rootUri = roots.get(0);
+
+                // Perform save if dirty
+                if (isDirty()) {
+                    saveIfDirty(activity, rootUri, password);
+                }
+            } catch (Exception e) {
+                SecureLog.e(TAG, "scheduleAutoSave: error", e);
+            }
+        }, AUTOSAVE_DELAY_MS, TimeUnit.MILLISECONDS);
     }
     
     /**
@@ -793,6 +885,14 @@ public class IndexManager {
                 }
             }
         }
+    }
+
+    /**
+     * Public wrapper to probe file type for external callers.
+     * Returns the file type or -1 on error / unknown.
+     */
+    public int probeFileType(@NonNull Context context, @NonNull Uri fileUri, @NonNull char[] password) {
+        return readFileType(context, fileUri, password);
     }
     
     /**

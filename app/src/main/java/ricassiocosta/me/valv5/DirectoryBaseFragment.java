@@ -741,18 +741,54 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
             orderBy(ORDER_BY_RANDOM);
             return true;
         } else if (id == R.id.filter_all) {
+            // If we're in the All view and index isn't loaded yet, show blocking overlay
+            if (galleryViewModel.isAllFolder()) {
+                IndexManager indexManager = IndexManager.getInstance();
+                if (!indexManager.isLoaded() && isLoadingInProgress() && this instanceof DirectoryAllFragment) {
+                    ((DirectoryAllFragment) this).showFilterLoadingOverlayForFilter(FILTER_ALL);
+                    return true;
+                }
+            }
             filterBy(FILTER_ALL);
             return true;
         } else if (id == R.id.filter_images) {
+            if (galleryViewModel.isAllFolder()) {
+                IndexManager indexManager = IndexManager.getInstance();
+                if (!indexManager.isLoaded() && isLoadingInProgress() && this instanceof DirectoryAllFragment) {
+                    ((DirectoryAllFragment) this).showFilterLoadingOverlayForFilter(FILTER_IMAGES);
+                    return true;
+                }
+            }
             filterBy(FILTER_IMAGES);
             return true;
         } else if (id == R.id.filter_gifs) {
+            if (galleryViewModel.isAllFolder()) {
+                IndexManager indexManager = IndexManager.getInstance();
+                if (!indexManager.isLoaded() && isLoadingInProgress() && this instanceof DirectoryAllFragment) {
+                    ((DirectoryAllFragment) this).showFilterLoadingOverlayForFilter(FILTER_GIFS);
+                    return true;
+                }
+            }
             filterBy(FILTER_GIFS);
             return true;
         } else if (id == R.id.filter_videos) {
+            if (galleryViewModel.isAllFolder()) {
+                IndexManager indexManager = IndexManager.getInstance();
+                if (!indexManager.isLoaded() && isLoadingInProgress() && this instanceof DirectoryAllFragment) {
+                    ((DirectoryAllFragment) this).showFilterLoadingOverlayForFilter(FILTER_VIDEOS);
+                    return true;
+                }
+            }
             filterBy(FILTER_VIDEOS);
             return true;
         } else if (id == R.id.filter_text) {
+            if (galleryViewModel.isAllFolder()) {
+                IndexManager indexManager = IndexManager.getInstance();
+                if (!indexManager.isLoaded() && isLoadingInProgress() && this instanceof DirectoryAllFragment) {
+                    ((DirectoryAllFragment) this).showFilterLoadingOverlayForFilter(FILTER_TEXTS);
+                    return true;
+                }
+            }
             filterBy(FILTER_TEXTS);
             return true;
         } else if (id == R.id.toggle_filename) {
