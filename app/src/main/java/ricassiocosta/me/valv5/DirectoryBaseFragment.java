@@ -58,11 +58,19 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.SimpleItemAnimator;
 import androidx.recyclerview.widget.StaggeredGridLayoutManager;
 import androidx.viewpager2.widget.ViewPager2;
+import android.widget.ProgressBar;
+import android.widget.TextView;
+import androidx.appcompat.app.AlertDialog;
+import android.view.LayoutInflater;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import ricassiocosta.me.valv5.adapters.GalleryGridAdapter;
 import ricassiocosta.me.valv5.adapters.GalleryPagerAdapter;
@@ -72,6 +80,7 @@ import ricassiocosta.me.valv5.data.Password;
 import ricassiocosta.me.valv5.encryption.Encryption;
 import ricassiocosta.me.valv5.exception.InvalidPasswordException;
 import ricassiocosta.me.valv5.databinding.FragmentDirectoryBinding;
+import ricassiocosta.me.valv5.index.IndexManager;
 import ricassiocosta.me.valv5.security.SecureMemoryManager;
 import ricassiocosta.me.valv5.utils.Dialogs;
 import ricassiocosta.me.valv5.utils.FileStuff;
@@ -118,6 +127,9 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     GalleryPagerAdapter galleryPagerAdapter;
     Settings settings;
 
+    // ExecutorService to serialize background filter/sort tasks for this fragment
+    private ExecutorService executorService;
+
     int orderBy = ORDER_BY_NEWEST;
 
     @Override
@@ -151,6 +163,9 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     @Override
     public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+
+        // initialize executor to serialize filter/order tasks
+        executorService = Executors.newSingleThreadExecutor();
 
         passwordViewModel = new ViewModelProvider(requireActivity()).get(PasswordViewModel.class);
         navigationViewModel = new ViewModelProvider(requireActivity()).get(NavigationViewModel.class);
@@ -534,92 +549,77 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
     @SuppressLint("NotifyDataSetChanged")
     void orderBy(int order) {
         this.orderBy = order;
-        new Thread(() -> {
-            synchronized (LOCK) {
-                List<GalleryFile> galleryFiles = galleryViewModel.getGalleryFiles();
-                if (order == ORDER_BY_NEWEST) {
-                    galleryFiles.sort((o1, o2) -> {
-                        // Directories always come first
-                        if (o1.isDirectory() && !o2.isDirectory()) return -1;
-                        if (!o1.isDirectory() && o2.isDirectory()) return 1;
-                        // Then sort by last modified (newest first)
-                        if (o1.getLastModified() > o2.getLastModified()) {
-                            return -1;
-                        } else if (o1.getLastModified() < o2.getLastModified()) {
-                            return 1;
-                        }
-                        return 0;
-                    });
-                } else if (order == ORDER_BY_OLDEST) {
-                    galleryFiles.sort((o1, o2) -> {
-                        // Directories always come first
-                        if (o1.isDirectory() && !o2.isDirectory()) return -1;
-                        if (!o1.isDirectory() && o2.isDirectory()) return 1;
-                        // Then sort by last modified (oldest first)
-                        if (o1.getLastModified() > o2.getLastModified()) {
-                            return 1;
-                        } else if (o1.getLastModified() < o2.getLastModified()) {
-                            return -1;
-                        }
-                        return 0;
-                    });
-                } else if (order == ORDER_BY_LARGEST) {
-                    galleryFiles.sort((o1, o2) -> {
-                        // Directories always come first
-                        if (o1.isDirectory() && !o2.isDirectory()) return -1;
-                        if (!o1.isDirectory() && o2.isDirectory()) return 1;
-                        // Then sort by size (largest first)
-                        if (o1.getSize() > o2.getSize()) {
-                            return -1;
-                        } else if (o1.getSize() < o2.getSize()) {
-                            return 1;
-                        }
-                        return 0;
-                    });
-                } else if (order == ORDER_BY_SMALLEST) {
-                    galleryFiles.sort((o1, o2) -> {
-                        // Directories always come first
-                        if (o1.isDirectory() && !o2.isDirectory()) return -1;
-                        if (!o1.isDirectory() && o2.isDirectory()) return 1;
-                        // Then sort by size (smallest first)
-                        if (o1.getSize() > o2.getSize()) {
-                            return 1;
-                        } else if (o1.getSize() < o2.getSize()) {
-                            return -1;
-                        }
-                        return 0;
-                    });
-                } else {
-                    // For random order, separate directories and files, shuffle files, then combine
-                    List<GalleryFile> directories = new ArrayList<>();
-                    List<GalleryFile> files = new ArrayList<>();
-                    for (GalleryFile f : galleryFiles) {
-                        if (f.isDirectory()) {
-                            directories.add(f);
-                        } else {
-                            files.add(f);
-                        }
-                    }
-                    Collections.shuffle(files);
-                    galleryFiles.clear();
-                    galleryFiles.addAll(directories);
-                    galleryFiles.addAll(files);
-                }
-                new Handler(Looper.getMainLooper()).post(() -> {
-                    synchronized (LOCK) {
-                        galleryGridAdapter.notifyDataSetChanged();
-                        galleryPagerAdapter.notifyDataSetChanged();
-                    }
-                    // Scroll to top when sorting changes
-                    binding.recyclerView.scrollToPosition(0);
+        Runnable task = () -> doOrderBy(order);
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.submit(task);
+        } else {
+            new Thread(task).start();
+        }
+    }
+
+    private void doOrderBy(int order) {
+        synchronized (LOCK) {
+            List<GalleryFile> galleryFiles = galleryViewModel.getGalleryFiles();
+            if (order == ORDER_BY_NEWEST) {
+                galleryFiles.sort((o1, o2) -> {
+                    if (o1.isDirectory() && !o2.isDirectory()) return -1;
+                    if (!o1.isDirectory() && o2.isDirectory()) return 1;
+                    if (o1.getLastModified() > o2.getLastModified()) return -1;
+                    if (o1.getLastModified() < o2.getLastModified()) return 1;
+                    return 0;
                 });
+            } else if (order == ORDER_BY_OLDEST) {
+                galleryFiles.sort((o1, o2) -> {
+                    if (o1.isDirectory() && !o2.isDirectory()) return -1;
+                    if (!o1.isDirectory() && o2.isDirectory()) return 1;
+                    if (o1.getLastModified() > o2.getLastModified()) return 1;
+                    if (o1.getLastModified() < o2.getLastModified()) return -1;
+                    return 0;
+                });
+            } else if (order == ORDER_BY_LARGEST) {
+                galleryFiles.sort((o1, o2) -> {
+                    if (o1.isDirectory() && !o2.isDirectory()) return -1;
+                    if (!o1.isDirectory() && o2.isDirectory()) return 1;
+                    if (o1.getSize() > o2.getSize()) return -1;
+                    if (o1.getSize() < o2.getSize()) return 1;
+                    return 0;
+                });
+            } else if (order == ORDER_BY_SMALLEST) {
+                galleryFiles.sort((o1, o2) -> {
+                    if (o1.isDirectory() && !o2.isDirectory()) return -1;
+                    if (!o1.isDirectory() && o2.isDirectory()) return 1;
+                    if (o1.getSize() > o2.getSize()) return 1;
+                    if (o1.getSize() < o2.getSize()) return -1;
+                    return 0;
+                });
+            } else {
+                List<GalleryFile> directories = new ArrayList<>();
+                List<GalleryFile> files = new ArrayList<>();
+                for (GalleryFile f : galleryFiles) {
+                    if (f.isDirectory()) {
+                        directories.add(f);
+                    } else {
+                        files.add(f);
+                    }
+                }
+                Collections.shuffle(files);
+                galleryFiles.clear();
+                galleryFiles.addAll(directories);
+                galleryFiles.addAll(files);
             }
-        }).start();
+            new Handler(Looper.getMainLooper()).post(() -> {
+                synchronized (LOCK) {
+                    galleryGridAdapter.notifyDataSetChanged();
+                    galleryPagerAdapter.notifyDataSetChanged();
+                }
+                binding.recyclerView.scrollToPosition(0);
+            });
+        }
     }
 
     @SuppressLint("NotifyDataSetChanged")
     void filterBy(int filter) {
-        new Thread(() -> {
+        Runnable task = () -> {
             synchronized (LOCK) {
                 List<GalleryFile> hiddenFiles = galleryViewModel.getHiddenFiles();
                 List<GalleryFile> galleryFiles = galleryViewModel.getGalleryFiles();
@@ -636,14 +636,17 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
                             hiddenFiles.add(f);
                         }
                     }
-                    new Handler(Looper.getMainLooper()).post(() -> {
-                        galleryGridAdapter.notifyDataSetChanged();
-                        galleryPagerAdapter.notifyDataSetChanged();
-                    });
                 }
-                orderBy(this.orderBy);
+                // Perform ordering atomically in the same background task to avoid nested threads
+                doOrderBy(this.orderBy);
             }
-        }).start();
+        };
+
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.submit(task);
+        } else {
+            new Thread(task).start();
+        }
     }
 
     /**
@@ -660,6 +663,16 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         if (galleryViewModel.isInSelectionMode()) {
             if (galleryViewModel.isRootDir()) {
                 menuInflater.inflate(R.menu.menu_main_selection_root, menu);
+                // Show "Generate Index" only when exactly one folder is selected
+                MenuItem generateIndexItem = menu.findItem(R.id.generate_index);
+                if (generateIndexItem != null) {
+                    boolean showGenerateIndex = false;
+                    List<GalleryFile> selectedFiles = galleryGridAdapter.getSelectedFiles();
+                    if (selectedFiles.size() == 1 && selectedFiles.get(0).isDirectory()) {
+                        showGenerateIndex = true;
+                    }
+                    generateIndexItem.setVisible(showGenerateIndex);
+                }
             } else if (galleryViewModel.isAllFolder()) {
                 menuInflater.inflate(R.menu.menu_main_selection_all, menu);
                 // Only show "Open in folder" when exactly one file is selected
@@ -724,18 +737,54 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
             orderBy(ORDER_BY_RANDOM);
             return true;
         } else if (id == R.id.filter_all) {
+            // If we're in the All view and index isn't loaded yet, show blocking overlay
+            if (galleryViewModel.isAllFolder()) {
+                IndexManager indexManager = IndexManager.getInstance();
+                if (!indexManager.isLoaded() && isLoadingInProgress() && this instanceof DirectoryAllFragment) {
+                    ((DirectoryAllFragment) this).showFilterLoadingOverlayForFilter(FILTER_ALL);
+                    return true;
+                }
+            }
             filterBy(FILTER_ALL);
             return true;
         } else if (id == R.id.filter_images) {
+            if (galleryViewModel.isAllFolder()) {
+                IndexManager indexManager = IndexManager.getInstance();
+                if (!indexManager.isLoaded() && isLoadingInProgress() && this instanceof DirectoryAllFragment) {
+                    ((DirectoryAllFragment) this).showFilterLoadingOverlayForFilter(FILTER_IMAGES);
+                    return true;
+                }
+            }
             filterBy(FILTER_IMAGES);
             return true;
         } else if (id == R.id.filter_gifs) {
+            if (galleryViewModel.isAllFolder()) {
+                IndexManager indexManager = IndexManager.getInstance();
+                if (!indexManager.isLoaded() && isLoadingInProgress() && this instanceof DirectoryAllFragment) {
+                    ((DirectoryAllFragment) this).showFilterLoadingOverlayForFilter(FILTER_GIFS);
+                    return true;
+                }
+            }
             filterBy(FILTER_GIFS);
             return true;
         } else if (id == R.id.filter_videos) {
+            if (galleryViewModel.isAllFolder()) {
+                IndexManager indexManager = IndexManager.getInstance();
+                if (!indexManager.isLoaded() && isLoadingInProgress() && this instanceof DirectoryAllFragment) {
+                    ((DirectoryAllFragment) this).showFilterLoadingOverlayForFilter(FILTER_VIDEOS);
+                    return true;
+                }
+            }
             filterBy(FILTER_VIDEOS);
             return true;
         } else if (id == R.id.filter_text) {
+            if (galleryViewModel.isAllFolder()) {
+                IndexManager indexManager = IndexManager.getInstance();
+                if (!indexManager.isLoaded() && isLoadingInProgress() && this instanceof DirectoryAllFragment) {
+                    ((DirectoryAllFragment) this).showFilterLoadingOverlayForFilter(FILTER_TEXTS);
+                    return true;
+                }
+            }
             filterBy(FILTER_TEXTS);
             return true;
         } else if (id == R.id.toggle_filename) {
@@ -779,6 +828,9 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
             return true;
         } else if (id == R.id.open_in_folder) {
             openSelectedFileInFolder();
+            return true;
+        } else if (id == R.id.generate_index) {
+            showGenerateIndexDialog();
             return true;
         }
 
@@ -970,6 +1022,110 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         });
     }
 
+    /**
+     * Show dialog to generate index for all files in the selected folder.
+     * Only available when a single folder is selected.
+     */
+    private void showGenerateIndexDialog() {
+        FragmentActivity activity = getActivity();
+        if (activity == null) {
+            return;
+        }
+
+        // Get the selected folder
+        List<GalleryFile> selectedFiles = galleryGridAdapter.getSelectedFiles();
+        if (selectedFiles.size() != 1 || !selectedFiles.get(0).isDirectory()) {
+            Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_error));
+            return;
+        }
+
+        GalleryFile selectedFolder = selectedFiles.get(0);
+        Uri folderUri = selectedFolder.getUri();
+
+        // Show progress dialog (AlertDialog with custom view)
+        View dialogView = LayoutInflater.from(activity).inflate(R.layout.dialog_progress, null);
+        ProgressBar progressBar = dialogView.findViewById(R.id.dialog_progress_bar);
+        TextView progressText = dialogView.findViewById(R.id.dialog_progress_text);
+
+        progressBar.setIndeterminate(false);
+        progressBar.setMax(100);
+        progressBar.setProgress(0);
+
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+
+        // Show the dialog
+        androidx.appcompat.app.AlertDialog.Builder builder = new androidx.appcompat.app.AlertDialog.Builder(activity)
+            .setTitle(getString(R.string.index_generating))
+            .setView(dialogView)
+            .setCancelable(true);
+        androidx.appcompat.app.AlertDialog progressDialog = builder.create();
+        progressDialog.setOnCancelListener(dialog -> {
+            cancelled.set(true);
+            Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled));
+        });
+        progressDialog.show();
+
+        // Worker runnable for index generation
+        Runnable worker = () -> {
+            // Check if fragment is still attached before accessing context/activity
+            if (!isAdded()) {
+                progressDialog.dismiss();
+                return;
+            }
+
+            char[] password = Password.getInstance().getPassword();
+            if (password == null) {
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    progressDialog.dismiss();
+                    if (isAdded()) {
+                        Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_error));
+                    }
+                });
+                return;
+            }
+
+            IndexManager indexManager = IndexManager.getInstance();
+            int result = indexManager.generateIndex(
+                    activity,
+                    folderUri,
+                    password,
+                    (progressPercent) -> {
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            if (isAdded() && progressDialog.isShowing()) {
+                                progressText.setText(getString(R.string.index_generating_progress, (int) progressPercent));
+                                progressBar.setProgress((int) progressPercent);
+                            }
+                        });
+                    },
+                    cancelled);
+
+            new Handler(Looper.getMainLooper()).post(() -> {
+                progressDialog.dismiss();
+                if (!isAdded() || getActivity() == null) {
+                    return;
+                }
+                if (cancelled.get()) {
+                    // Show message indicating partial progress was saved
+                    if (result > 0) {
+                        Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled_partial, result));
+                    } else {
+                        Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_cancelled));
+                    }
+                } else if (result >= 0) {
+                    Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generated, result));
+                } else {
+                    Toaster.getInstance(requireContext()).showShort(getString(R.string.index_generate_error));
+                }
+            });
+        };
+
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.submit(worker);
+        } else {
+            new Thread(worker).start();
+        }
+    }
+
     @Override
     public void onStart() {
         super.onStart();
@@ -1024,7 +1180,18 @@ public abstract class DirectoryBaseFragment extends Fragment implements MenuProv
         if (galleryGridAdapter != null) {
             galleryGridAdapter.shutdown();
         }
-        
+        // Shutdown executorService used for filter/sort tasks
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.shutdown();
+            try {
+                if (!executorService.awaitTermination(2, TimeUnit.SECONDS)) {
+                    executorService.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executorService.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
         // Note: We do NOT call SecureMemoryManager.onFolderChanged() here
         // because it would affect the parent fragment that's being restored.
         // Memory cleanup happens only on app lock/close via performFullCleanup().

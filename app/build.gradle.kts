@@ -70,6 +70,8 @@ dependencies {
     testImplementation(libs.junit)
     // Robolectric for JVM Android unit tests
     testImplementation("org.robolectric:robolectric:4.11")
+    // Mockito inline to allow mocking final classes like ContentResolver in unit tests
+    testImplementation("org.mockito:mockito-inline:4.11.0")
     // BouncyCastle provider for ChaCha20-Poly1305 support on the JVM
     testImplementation("org.bouncycastle:bcprov-jdk15on:1.70")
     // Make BouncyCastle available to instrumentation tests as well
